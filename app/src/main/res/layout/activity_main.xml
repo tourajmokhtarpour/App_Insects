@@ -7,6 +7,26 @@
     android:background="@color/background"
     android:padding="16dp">
 
+    <!-- ✅ عنوان مرکز در بالا -->
+    <TextView
+        android:id="@+id/tvCenterName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/center_name"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@color/primary_dark"
+        android:textAlignment="center"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:padding="12dp"
+        android:background="@drawable/header_background"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp" />
+
+    <!-- عنوان اصلی اپ -->
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
@@ -15,11 +35,12 @@
         android:textSize="28sp"
         android:textStyle="bold"
         android:textColor="@color/primary"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvCenterName"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="32dp" />
 
+    <!-- زیرعنوان -->
     <TextView
         android:id="@+id/tvSubtitle"
         android:layout_width="wrap_content"
@@ -33,6 +54,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="8dp" />
 
+    <!-- دکمه دوربین -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnTakePhoto"
         android:layout_width="0dp"
@@ -45,6 +67,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="48dp" />
 
+    <!-- دکمه گالری -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnSelectFromGallery"
         android:layout_width="0dp"
@@ -57,5 +80,48 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="16dp" />
+
+    <!-- ✅ خط جداکننده در پایین -->
+    <View
+        android:id="@+id/divider"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="@color/text_secondary"
+        android:alpha="0.3"
+        app:layout_constraintBottom_toTopOf="@id/tvDepartment"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="12dp" />
+
+    <!-- ✅ نام بخش در پایین - خط اول -->
+    <TextView
+        android:id="@+id/tvDepartment"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/department_name"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="@color/primary"
+        android:textAlignment="center"
+        android:gravity="center"
+        app:layout_constraintBottom_toTopOf="@id/tvDeveloper"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="8dp" />
+
+    <!-- ✅ نام توسعه دهنده در پایین - خط دوم -->
+    <TextView
+        android:id="@+id/tvDeveloper"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/developer_name"
+        android:textSize="13sp"
+        android:textColor="@color/text_secondary"
+        android:textAlignment="center"
+        android:gravity="center"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="16dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
