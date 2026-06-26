@@ -17,18 +17,6 @@ object InsectDatabase {
                 interestingFacts = "به دلیل صدای جیغ‌مانند و طرح جمجمه معروف است"
             )
             
-            "Acherontia atropos(Larve)" -> InsectInfo(
-                name = "لارو پروانه مرگ",
-                scientificName = "Acherontia atropos",
-                family = "Sphingidae",
-                description = "لارو بزرگ با رنگ‌های زرد و آبی و شاخ دم‌دار",
-                habitat = "روی گیاهان خانواده بادنجانیان",
-                diet = "برگ‌های سیب‌زمینی، گوجه‌فرنگی",
-                lifecycle = "مرحله لاروی 3-4 هفته",
-                isDangerous = false,
-                interestingFacts = "می‌تواند با حرکت دادن سر صدای کلیک ایجاد کند"
-            )
-            
             "Danaus plexippus" -> InsectInfo(
                 name = "پروانه مونارک",
                 scientificName = "Danaus plexippus",
@@ -51,18 +39,6 @@ object InsectDatabase {
                 lifecycle = "کلونی فصلی",
                 isDangerous = true,
                 interestingFacts = "نیش آن دردناک است اما معمولاً تهاجمی نیست"
-            )
-            
-            "Nezara viridula" -> InsectInfo(
-                name = "سن سبز",
-                scientificName = "Nezara viridula",
-                family = "Pentatomidae",
-                description = "حشره‌ای سبز رنگ با شکل سپر",
-                habitat = "مزارع و باغ‌ها",
-                diet = "شیره گیاهان",
-                lifecycle = "تخم، پوره، بالغ",
-                isDangerous = true,
-                interestingFacts = "آفت مهم کشاورزی است و بوی بدی دارد"
             )
             
             else -> InsectInfo(
