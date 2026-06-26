@@ -1,5 +1,6 @@
 package com.example.insectdetector
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -9,12 +10,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import com.example.insectdetector.databinding.ActivityResultBinding
 import com.example.insectdetector.detector.YOLODetector
-import com.example.insectdetector.utils.ImageUtils
 import java.text.DecimalFormat
+import java.util.concurrent.Executors
 
 class ResultActivity : AppCompatActivity() {
     private lateinit var binding: ActivityResultBinding
     private lateinit var detector: YOLODetector
+    private val executor = Executors.newSingleThreadExecutor()
 
     companion object {
         private const val TAG = "ResultActivity"
@@ -26,9 +28,11 @@ class ResultActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         try {
+            Log.d(TAG, "در حال ساخت YOLODetector...")
             detector = YOLODetector(this)
+            Log.d(TAG, "✅ YOLODetector ساخته شد")
         } catch (e: Exception) {
-            Log.e(TAG, "خطا در بارگذاری مدل: ${e.message}", e)
+            Log.e(TAG, "❌ خطا در ساخت YOLODetector: ${e.message}", e)
             Toast.makeText(this, "خطا در بارگذاری مدل: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
             return
@@ -38,25 +42,32 @@ class ResultActivity : AppCompatActivity() {
         val className = intent.getStringExtra("class_name")
         val confidence = intent.getFloatExtra("confidence", 0f)
         
-        // ✅ بارگذاری تصویر
+        Log.d(TAG, "imageUri: $imageUri, className: $className")
+        
         if (imageUri != null) {
             try {
-                val bitmap = ImageUtils.loadBitmapFromUri(this, Uri.parse(imageUri))
+                val inputStream = contentResolver.openInputStream(Uri.parse(imageUri))
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                
                 if (bitmap != null) {
+                    Log.d(TAG, "تصویر بارگذاری شد: ${bitmap.width}x${bitmap.height}")
                     binding.ivInsectImage.setImageBitmap(bitmap)
                     
-                    // ✅ اگر از گالری آمده، تشخیص انجام شود
-                    if (className == null) {
+                    if (className == null || className.isEmpty()) {
+                        Log.d(TAG, "شروع تشخیص...")
                         detectInImage(bitmap)
                     } else {
+                        Log.d(TAG, "نمایش نتیجه: $className")
                         displayResults(className, confidence)
                     }
                 } else {
+                    Log.e(TAG, "Bitmap null است")
                     Toast.makeText(this, "خطا در بارگذاری تصویر", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "خطا در بارگذاری تصویر: ${e.message}", e)
-                Toast.makeText(this, "خطا در بارگذاری تصویر: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "خطا: ${e.message}", Toast.LENGTH_LONG).show()
             }
         } else if (className != null) {
             displayResults(className, confidence)
@@ -70,20 +81,24 @@ class ResultActivity : AppCompatActivity() {
         }
     }
 
-    private fun detectInImage(bitmap: android.graphics.Bitmap) {
+    private fun detectInImage(bitmap: Bitmap) {
         binding.progressBar.isVisible = true
         
-        Thread {
+        executor.execute {
             try {
+                Log.d(TAG, "در حال اجرای detect...")
                 val results = detector.detect(bitmap)
+                Log.d(TAG, "نتایج: ${results.size}")
                 
                 runOnUiThread {
                     binding.progressBar.isVisible = false
                     
                     if (results.isNotEmpty()) {
                         val topResult = results[0]
+                        Log.d(TAG, "بهترین نتیجه: ${topResult.className} (${topResult.confidence})")
                         displayResults(topResult.className, topResult.confidence)
                     } else {
+                        Log.d(TAG, "هیچ حشره‌ای تشخیص داده نشد")
                         Toast.makeText(this, "حشره‌ای تشخیص داده نشد", Toast.LENGTH_SHORT).show()
                         binding.tvClassName.text = "حشره‌ای تشخیص داده نشد"
                     }
@@ -95,7 +110,7 @@ class ResultActivity : AppCompatActivity() {
                     Toast.makeText(this, "خطا در تشخیص: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
-        }.start()
+        }
     }
 
     private fun displayResults(className: String, confidence: Float) {
@@ -130,10 +145,11 @@ class ResultActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        executor.shutdown()
         try {
             detector.close()
         } catch (e: Exception) {
-            Log.e(TAG, "خطا در بستن مدل: ${e.message}", e)
+            Log.e(TAG, "خطا در بستن detector: ${e.message}", e)
         }
     }
 }
