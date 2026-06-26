@@ -8,6 +8,7 @@ import com.example.insectdetector.utils.Constants
 import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
@@ -19,10 +20,9 @@ class YOLODetector(private val context: Context) {
     private val confidenceThreshold = Constants.CONFIDENCE_THRESHOLD
     private val classNames = Constants.CLASS_NAMES
     
-    // ابعاد خروجی
     private val numClasses = classNames.size
-    private val numOutputElements = 8400  // تعداد anchors در YOLOv8
-    private val outputElementSize = 4 + numClasses  // x, y, w, h + class scores
+    private val numOutputElements = 8400
+    private val outputElementSize = 4 + numClasses
 
     init {
         loadModel()
@@ -39,17 +39,15 @@ class YOLODetector(private val context: Context) {
                 }
             }
             
-            // بارگذاری مدل TFLite
             val modelBuffer = loadModelFile(modelFile)
             
             val options = Interpreter.Options().apply {
                 setNumThreads(4)
-                // استفاده از GPU در صورت موجود بودن
                 try {
                     val gpuDelegate = org.tensorflow.lite.gpu.GpuDelegate()
                     addDelegate(gpuDelegate)
                 } catch (e: Exception) {
-                    // GPU موجود نیست، از CPU استفاده کن
+                    // GPU موجود نیست
                 }
             }
             
@@ -70,15 +68,11 @@ class YOLODetector(private val context: Context) {
     }
 
     fun detect(bitmap: Bitmap): List<DetectionResult> {
-        if (interpreter == null) {
-            println("❌ مدل بارگذاری نشده است")
-            return emptyList()
-        }
+        if (interpreter == null) return emptyList()
 
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
         val inputBuffer = bitmapToByteBuffer(resizedBitmap)
         
-        // آرایه خروجی
         val outputBuffer = Array(1) { 
             Array(numOutputElements) { FloatArray(outputElementSize) } 
         }
@@ -100,10 +94,9 @@ class YOLODetector(private val context: Context) {
         bitmap.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
         
         for (pixel in pixels) {
-            // نرمال‌سازی به بازه [0, 1]
-            buffer.putFloat(((pixel shr 16 and 0xFF) / 255.0f).toFloat())  // R
-            buffer.putFloat(((pixel shr 8 and 0xFF) / 255.0f).toFloat())   // G
-            buffer.putFloat(((pixel and 0xFF) / 255.0f).toFloat())         // B
+            buffer.putFloat(((pixel shr 16 and 0xFF) / 255.0f).toFloat())
+            buffer.putFloat(((pixel shr 8 and 0xFF) / 255.0f).toFloat())
+            buffer.putFloat(((pixel and 0xFF) / 255.0f).toFloat())
         }
         
         buffer.rewind()
@@ -117,7 +110,6 @@ class YOLODetector(private val context: Context) {
     ): List<DetectionResult> {
         val detections = mutableListOf<DetectionResult>()
         
-        // transpose: از [8400, 84] به [84, 8400]
         val transposed = Array(outputElementSize) { i ->
             FloatArray(numOutputElements) { j -> output[j][i] }
         }
@@ -126,13 +118,11 @@ class YOLODetector(private val context: Context) {
         val scaleY = originalHeight.toFloat() / inputSize
         
         for (i in 0 until numOutputElements) {
-            // استخراج مقادیر
             val cx = transposed[0][i]
             val cy = transposed[1][i]
             val w = transposed[2][i]
             val h = transposed[3][i]
             
-            // پیدا کردن کلاس با بیشترین امتیاز
             var maxScore = 0f
             var maxClassIdx = 0
             
@@ -144,9 +134,7 @@ class YOLODetector(private val context: Context) {
                 }
             }
             
-            // فیلتر بر اساس confidence
             if (maxScore > confidenceThreshold) {
-                // تبدیل مختصات
                 val x1 = (cx - w / 2) * scaleX
                 val y1 = (cy - h / 2) * scaleY
                 val x2 = (cx + w / 2) * scaleX
@@ -163,7 +151,6 @@ class YOLODetector(private val context: Context) {
             }
         }
         
-        // Non-Maximum Suppression (حذف تشخیص‌های تکراری)
         return nms(detections)
     }
 
@@ -176,12 +163,10 @@ class YOLODetector(private val context: Context) {
         
         for (i in sorted.indices) {
             if (i in suppressed) continue
-            
             result.add(sorted[i])
             
             for (j in i + 1 until sorted.size) {
                 if (j in suppressed) continue
-                
                 if (iou(sorted[i].boundingBox, sorted[j].boundingBox) > iouThreshold) {
                     suppressed.add(j)
                 }
