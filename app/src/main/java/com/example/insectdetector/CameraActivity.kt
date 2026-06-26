@@ -25,14 +25,28 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var binding: ActivityCameraBinding
     private lateinit var cameraExecutor: ExecutorService
     private var imageCapture: ImageCapture? = null
-    private lateinit var detector: YOLODetector
+    private var detector: YOLODetector? = null
+
+    companion object {
+        private const val TAG = "CameraActivity"
+        private const val REQUEST_CODE_PERMISSIONS = 10
+        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        detector = YOLODetector(this)
+        try {
+            detector = YOLODetector(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "خطا در بارگذاری مدل: ${e.message}", e)
+            Toast.makeText(this, "خطا در بارگذاری مدل: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         if (allPermissionsGranted()) {
@@ -56,25 +70,26 @@ class CameraActivity : AppCompatActivity() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
         cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(binding.previewView.surfaceProvider)
-            }
-
-            imageCapture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                .build()
-
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
             try {
+                val cameraProvider = cameraProviderFuture.get()
+
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(binding.previewView.surfaceProvider)
+                }
+
+                imageCapture = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .build()
+
+                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(
                     this, cameraSelector, preview, imageCapture
                 )
             } catch (exc: Exception) {
                 Log.e(TAG, "استفاده از دوربین ناموفق بود", exc)
+                Toast.makeText(this, "خطا در راه‌اندازی دوربین: ${exc.message}", Toast.LENGTH_LONG).show()
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -95,8 +110,17 @@ class CameraActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
-                    detectInImage(bitmap)
+                    try {
+                        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
+                        if (bitmap != null) {
+                            detectInImage(bitmap)
+                        } else {
+                            Toast.makeText(this@CameraActivity, "خطا در بارگذاری تصویر", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "خطا در بارگذاری تصویر: ${e.message}", e)
+                        Toast.makeText(this@CameraActivity, "خطا: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
 
                 override fun onError(exc: ImageCaptureException) {
@@ -111,22 +135,30 @@ class CameraActivity : AppCompatActivity() {
         binding.progressBar.isVisible = true
         
         cameraExecutor.execute {
-            val results = detector.detect(bitmap)
-            
-            runOnUiThread {
-                binding.progressBar.isVisible = false
+            try {
+                val results = detector?.detect(bitmap) ?: emptyList()
                 
-                if (results.isNotEmpty()) {
-                    val topResult = results[0]
-                    val intent = Intent(this, ResultActivity::class.java).apply {
-                        putExtra("class_name", topResult.className)
-                        putExtra("confidence", topResult.confidence)
-                        putExtra("class_id", topResult.classId)
+                runOnUiThread {
+                    binding.progressBar.isVisible = false
+                    
+                    if (results.isNotEmpty()) {
+                        val topResult = results[0]
+                        val intent = Intent(this, ResultActivity::class.java).apply {
+                            putExtra("class_name", topResult.className)
+                            putExtra("confidence", topResult.confidence)
+                            putExtra("class_id", topResult.classId)
+                        }
+                        startActivity(intent)
+                        finish()
+                    } else {
+                        Toast.makeText(this, "حشره‌ای تشخیص داده نشد", Toast.LENGTH_SHORT).show()
                     }
-                    startActivity(intent)
-                    finish()
-                } else {
-                    Toast.makeText(this, "حشره‌ای تشخیص داده نشد", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "خطا در تشخیص: ${e.message}", e)
+                runOnUiThread {
+                    binding.progressBar.isVisible = false
+                    Toast.makeText(this, "خطا در تشخیص: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -153,11 +185,6 @@ class CameraActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
-    }
-
-    companion object {
-        private const val TAG = "CameraActivity"
-        private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+        detector?.close()
     }
 }
