@@ -21,9 +21,15 @@ class YOLODetector(private val context: Context) {
     private val confidenceThreshold = Constants.CONFIDENCE_THRESHOLD
     private val classNames = Constants.CLASS_NAMES
     
-    private val numClasses = classNames.size
-    private val numOutputElements = 8400
-    private val outputElementSize = 4 + numClasses
+    // ✅ متغیرهای پویا بر اساس shape واقعی مدل
+    private var numDetections = 300      // تعداد تشخیص‌ها
+    private var numOutputValues = 6      // تعداد مقادیر هر تشخیص
+    private var modelType = ModelType.YOLO_WITH_NMS  // نوع مدل
+
+    enum class ModelType {
+        YOLO_WITH_NMS,      // خروجی [1, 300, 6] - با NMS داخلی
+        YOLO_RAW            // خروجی [1, 8400, 4+nc] - خام
+    }
 
     companion object {
         private const val TAG = "YOLODetector"
@@ -42,17 +48,12 @@ class YOLODetector(private val context: Context) {
             
             if (!modelFile.exists()) {
                 Log.d(TAG, "فایل در cache وجود ندارد، کپی از assets...")
-                try {
-                    context.assets.open("best_float16.tflite").use { input ->
-                        FileOutputStream(modelFile).use { output ->
-                            input.copyTo(output)
-                        }
+                context.assets.open("best_float16.tflite").use { input ->
+                    FileOutputStream(modelFile).use { output ->
+                        input.copyTo(output)
                     }
-                    Log.d(TAG, "فایل با موفقیت کپی شد. اندازه: ${modelFile.length()} bytes")
-                } catch (e: Exception) {
-                    Log.e(TAG, "خطا در کپی فایل از assets: ${e.message}", e)
-                    throw e
                 }
+                Log.d(TAG, "فایل با موفقیت کپی شد. اندازه: ${modelFile.length()} bytes")
             } else {
                 Log.d(TAG, "فایل در cache وجود دارد. اندازه: ${modelFile.length()} bytes")
             }
@@ -60,16 +61,52 @@ class YOLODetector(private val context: Context) {
             val modelBuffer = loadModelFile(modelFile)
             Log.d(TAG, "مدل بارگذاری شد، در حال ساخت Interpreter...")
             
-            // ✅ فقط از CPU استفاده می‌کنیم (GPU حذف شد)
             val options = Interpreter.Options().apply {
                 setNumThreads(4)
             }
             
             interpreter = Interpreter(modelBuffer, options)
-            Log.d(TAG, "✅ مدل TFLite با موفقیت بارگذاری شد")
+            
+            // ✅ تشخیص خودکار نوع مدل از روی shape خروجی
+            detectModelType()
+            
+            Log.d(TAG, "✅ مدل TFLite با موفقیت بارگذاری شد - نوع: $modelType")
         } catch (e: Exception) {
             Log.e(TAG, "❌ خطا در بارگذاری مدل: ${e.message}", e)
             throw e
+        }
+    }
+
+    private fun detectModelType() {
+        try {
+            val outputTensor = interpreter?.getOutputTensor(0)
+            val shape = outputTensor?.shape()
+            
+            Log.d(TAG, "Shape خروجی مدل: ${shape?.contentToString()}")
+            
+            if (shape != null && shape.size == 3) {
+                numDetections = shape[1]
+                numOutputValues = shape[2]
+                
+                if (numOutputValues == 6) {
+                    // خروجی [1, 300, 6] = YOLO با NMS داخلی
+                    modelType = ModelType.YOLO_WITH_NMS
+                    Log.d(TAG, "✅ مدل شناسایی شد: YOLO با NMS داخلی")
+                    Log.d(TAG, "   تعداد تشخیص‌ها: $numDetections")
+                    Log.d(TAG, "   مقادیر هر تشخیص: $numOutputValues (x,y,w,h,conf,class_id)")
+                } else {
+                    // خروجی [1, 8400, 4+nc] = YOLO خام
+                    modelType = ModelType.YOLO_RAW
+                    Log.d(TAG, "✅ مدل شناسایی شد: YOLO خام")
+                    Log.d(TAG, "   تعداد تشخیص‌ها: $numDetections")
+                    Log.d(TAG, "   مقادیر هر تشخیص: $numOutputValues")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "خطا در تشخیص نوع مدل، از حالت پیش‌فرض استفاده می‌شود: ${e.message}")
+            modelType = ModelType.YOLO_WITH_NMS
+            numDetections = 300
+            numOutputValues = 6
         }
     }
 
@@ -93,16 +130,27 @@ class YOLODetector(private val context: Context) {
             val resizedBitmap = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
             val inputBuffer = bitmapToByteBuffer(resizedBitmap)
             
+            // ✅ ساخت outputBuffer بر اساس shape واقعی مدل
             val outputBuffer = Array(1) { 
-                Array(numOutputElements) { FloatArray(outputElementSize) } 
+                Array(numDetections) { FloatArray(numOutputValues) } 
             }
             
-            Log.d(TAG, "در حال اجرا کردن مدل...")
+            Log.d(TAG, "در حال اجرا کردن مدل... (shape: [1, $numDetections, $numOutputValues])")
             interpreter?.run(inputBuffer, outputBuffer)
             Log.d(TAG, "مدل اجرا شد، در حال پردازش نتایج...")
             
-            val results = parseDetections(outputBuffer[0], bitmap.width, bitmap.height)
+            // ✅ استفاده از parser مناسب بر اساس نوع مدل
+            val results = when (modelType) {
+                ModelType.YOLO_WITH_NMS -> parseDetectionsWithNMS(outputBuffer[0], bitmap.width, bitmap.height)
+                ModelType.YOLO_RAW -> parseDetectionsRaw(outputBuffer[0], bitmap.width, bitmap.height)
+            }
+            
             Log.d(TAG, "تعداد تشخیص‌ها: ${results.size}")
+            
+            // نمایش 5 تشخیص برتر
+            results.take(5).forEachIndexed { index, result ->
+                Log.d(TAG, "  #${index + 1}: ${result.className} (${String.format("%.2f", result.confidence)})")
+            }
             
             return results
         } catch (e: Exception) {
@@ -128,21 +176,76 @@ class YOLODetector(private val context: Context) {
         return buffer
     }
 
-    private fun parseDetections(
+    // ✅ Parser برای مدل با NMS داخلی (خروجی [1, 300, 6])
+    private fun parseDetectionsWithNMS(
         output: Array<FloatArray>,
         originalWidth: Int,
         originalHeight: Int
     ): List<DetectionResult> {
         val detections = mutableListOf<DetectionResult>()
         
-        val transposed = Array(outputElementSize) { i ->
-            FloatArray(numOutputElements) { j -> output[j][i] }
+        // ✅ مقیاس برای تبدیل مختصات از 224 به اندازه اصلی تصویر
+        val scaleX = originalWidth.toFloat() / inputSize
+        val scaleY = originalHeight.toFloat() / inputSize
+        
+        for (i in 0 until numDetections) {
+            val values = output[i]
+            
+            // ✅ استخراج مقادیر: [x_center, y_center, width, height, confidence, class_id]
+            val cx = values[0]
+            val cy = values[1]
+            val w = values[2]
+            val h = values[3]
+            val confidence = values[4]
+            val classId = values[5].toInt()
+            
+            // فیلتر بر اساس confidence
+            if (confidence > confidenceThreshold) {
+                // بررسی معتبر بودن class_id
+                if (classId < 0 || classId >= classNames.size) {
+                    Log.w(TAG, "class_id نامعتبر: $classId (اندازه لیست: ${classNames.size})")
+                    continue
+                }
+                
+                // تبدیل مختصات از [0, 224] به مختصات تصویر اصلی
+                val x1 = (cx - w / 2) * scaleX
+                val y1 = (cy - h / 2) * scaleY
+                val x2 = (cx + w / 2) * scaleX
+                val y2 = (cy + h / 2) * scaleY
+                
+                detections.add(
+                    DetectionResult(
+                        className = classNames[classId],
+                        confidence = confidence,
+                        boundingBox = RectF(x1, y1, x2, y2),
+                        classId = classId
+                    )
+                )
+            }
+        }
+        
+        // مرتب‌سازی بر اساس confidence (نزولی)
+        return detections.sortedByDescending { it.confidence }
+    }
+
+    // ✅ Parser برای مدل خام (خروجی [1, 8400, 4+nc])
+    private fun parseDetectionsRaw(
+        output: Array<FloatArray>,
+        originalWidth: Int,
+        originalHeight: Int
+    ): List<DetectionResult> {
+        val detections = mutableListOf<DetectionResult>()
+        val numClasses = classNames.size
+        
+        // Transpose: از [8400, 4+nc] به [4+nc, 8400]
+        val transposed = Array(numOutputValues) { i ->
+            FloatArray(numDetections) { j -> output[j][i] }
         }
         
         val scaleX = originalWidth.toFloat() / inputSize
         val scaleY = originalHeight.toFloat() / inputSize
         
-        for (i in 0 until numOutputElements) {
+        for (i in 0 until numDetections) {
             val cx = transposed[0][i]
             val cy = transposed[1][i]
             val w = transposed[2][i]
@@ -208,23 +311,4 @@ class YOLODetector(private val context: Context) {
         val y2 = minOf(box1.bottom, box2.bottom)
         
         val intersection = maxOf(0f, x2 - x1) * maxOf(0f, y2 - y1)
-        val area1 = box1.width() * box1.height()
-        val area2 = box2.width() * box2.height()
-        val union = area1 + area2 - intersection
-        
-        return if (union > 0) intersection / union else 0f
-    }
-
-    fun getInsectInfo(className: String): InsectInfo {
-        return InsectDatabase.getInfo(className)
-    }
-
-    fun close() {
-        try {
-            interpreter?.close()
-            Log.d(TAG, "Interpreter بسته شد")
-        } catch (e: Exception) {
-            Log.e(TAG, "خطا در بستن Interpreter: ${e.message}", e)
-        }
-    }
-}
+        val area1 =
