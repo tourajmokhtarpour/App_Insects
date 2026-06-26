@@ -31,20 +31,13 @@ jobs:
           fi
           echo "✅ Model file found successfully!"
 
-      - name: Setup Gradle Wrapper
-        run: |
-          # ساخت gradlew اگر وجود ندارد
-          if [ ! -f gradlew ]; then
-            echo "Creating gradlew..."
-            cat > gradlew << 'EOF'
-#!/bin/sh
-exec java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain "$@"
-EOF
-            chmod +x gradlew
-          fi
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: "8.7"
 
-      - name: Build with Gradle Wrapper
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
