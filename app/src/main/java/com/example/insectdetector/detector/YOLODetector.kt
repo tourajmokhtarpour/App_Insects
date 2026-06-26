@@ -60,15 +60,9 @@ class YOLODetector(private val context: Context) {
             val modelBuffer = loadModelFile(modelFile)
             Log.d(TAG, "مدل بارگذاری شد، در حال ساخت Interpreter...")
             
+            // ✅ فقط از CPU استفاده می‌کنیم (GPU حذف شد)
             val options = Interpreter.Options().apply {
                 setNumThreads(4)
-                try {
-                    val gpuDelegate = org.tensorflow.lite.gpu.GpuDelegate()
-                    addDelegate(gpuDelegate)
-                    Log.d(TAG, "GPU Delegate اضافه شد")
-                } catch (e: Exception) {
-                    Log.w(TAG, "GPU Delegate موجود نیست، از CPU استفاده می‌شود")
-                }
             }
             
             interpreter = Interpreter(modelBuffer, options)
