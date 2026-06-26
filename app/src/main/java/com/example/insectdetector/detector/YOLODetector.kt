@@ -3,6 +3,7 @@ package com.example.insectdetector.detector
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.RectF
+import android.util.Log
 import com.example.insectdetector.data.InsectDatabase
 import com.example.insectdetector.utils.Constants
 import org.tensorflow.lite.Interpreter
@@ -24,38 +25,57 @@ class YOLODetector(private val context: Context) {
     private val numOutputElements = 8400
     private val outputElementSize = 4 + numClasses
 
+    companion object {
+        private const val TAG = "YOLODetector"
+    }
+
     init {
         loadModel()
     }
 
     private fun loadModel() {
         try {
+            Log.d(TAG, "شروع بارگذاری مدل...")
+            
             val modelFile = File(context.cacheDir, "best_float16.tflite")
+            Log.d(TAG, "مسیر cache: ${modelFile.absolutePath}")
+            
             if (!modelFile.exists()) {
-                context.assets.open("best_float16.tflite").use { input ->
-                    FileOutputStream(modelFile).use { output ->
-                        input.copyTo(output)
+                Log.d(TAG, "فایل در cache وجود ندارد، کپی از assets...")
+                try {
+                    context.assets.open("best_float16.tflite").use { input ->
+                        FileOutputStream(modelFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
+                    Log.d(TAG, "فایل با موفقیت کپی شد. اندازه: ${modelFile.length()} bytes")
+                } catch (e: Exception) {
+                    Log.e(TAG, "خطا در کپی فایل از assets: ${e.message}", e)
+                    throw e
                 }
+            } else {
+                Log.d(TAG, "فایل در cache وجود دارد. اندازه: ${modelFile.length()} bytes")
             }
             
             val modelBuffer = loadModelFile(modelFile)
+            Log.d(TAG, "مدل بارگذاری شد، در حال ساخت Interpreter...")
             
             val options = Interpreter.Options().apply {
                 setNumThreads(4)
                 try {
                     val gpuDelegate = org.tensorflow.lite.gpu.GpuDelegate()
                     addDelegate(gpuDelegate)
+                    Log.d(TAG, "GPU Delegate اضافه شد")
                 } catch (e: Exception) {
-                    // GPU موجود نیست
+                    Log.w(TAG, "GPU Delegate موجود نیست، از CPU استفاده می‌شود")
                 }
             }
             
             interpreter = Interpreter(modelBuffer, options)
-            println("✅ مدل TFLite با موفقیت بارگذاری شد")
+            Log.d(TAG, "✅ مدل TFLite با موفقیت بارگذاری شد")
         } catch (e: Exception) {
-            e.printStackTrace()
-            println("❌ خطا در بارگذاری مدل: ${e.message}")
+            Log.e(TAG, "❌ خطا در بارگذاری مدل: ${e.message}", e)
+            throw e
         }
     }
 
@@ -68,20 +88,31 @@ class YOLODetector(private val context: Context) {
     }
 
     fun detect(bitmap: Bitmap): List<DetectionResult> {
-        if (interpreter == null) return emptyList()
-
-        val resizedBitmap = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
-        val inputBuffer = bitmapToByteBuffer(resizedBitmap)
-        
-        val outputBuffer = Array(1) { 
-            Array(numOutputElements) { FloatArray(outputElementSize) } 
+        if (interpreter == null) {
+            Log.e(TAG, "Interpreter null است!")
+            return emptyList()
         }
-        
+
         try {
+            Log.d(TAG, "شروع تشخیص تصویر: ${bitmap.width}x${bitmap.height}")
+            
+            val resizedBitmap = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
+            val inputBuffer = bitmapToByteBuffer(resizedBitmap)
+            
+            val outputBuffer = Array(1) { 
+                Array(numOutputElements) { FloatArray(outputElementSize) } 
+            }
+            
+            Log.d(TAG, "در حال اجرا کردن مدل...")
             interpreter?.run(inputBuffer, outputBuffer)
-            return parseDetections(outputBuffer[0], bitmap.width, bitmap.height)
+            Log.d(TAG, "مدل اجرا شد، در حال پردازش نتایج...")
+            
+            val results = parseDetections(outputBuffer[0], bitmap.width, bitmap.height)
+            Log.d(TAG, "تعداد تشخیص‌ها: ${results.size}")
+            
+            return results
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "خطا در detect: ${e.message}", e)
             return emptyList()
         }
     }
@@ -195,6 +226,11 @@ class YOLODetector(private val context: Context) {
     }
 
     fun close() {
-        interpreter?.close()
+        try {
+            interpreter?.close()
+            Log.d(TAG, "Interpreter بسته شد")
+        } catch (e: Exception) {
+            Log.e(TAG, "خطا در بستن Interpreter: ${e.message}", e)
+        }
     }
 }
