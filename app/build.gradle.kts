@@ -34,8 +34,10 @@ android {
         jvmTarget = "17"
     }
     
+    // ✅ فقط viewBinding نگه دارید، dataBinding را حذف کنید
     buildFeatures {
         viewBinding = true
+        // ❌ dataBinding = true  ← این خط را حذف کنید
     }
 }
 
