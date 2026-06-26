@@ -31,8 +31,9 @@ jobs:
           fi
           echo "✅ Model file found successfully!"
 
+      # ✅ استفاده از action جدید
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: "8.7"
 
