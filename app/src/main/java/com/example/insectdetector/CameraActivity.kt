@@ -22,166 +22,138 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class CameraActivity : AppCompatActivity() {
+    
     private lateinit var binding: ActivityCameraBinding
     private lateinit var cameraExecutor: ExecutorService
     private var imageCapture: ImageCapture? = null
     private var detector: YOLODetector? = null
-
+    
     companion object {
         private const val TAG = "CameraActivity"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
     }
-
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
+        
         try {
             detector = YOLODetector(this)
         } catch (e: Exception) {
             Log.e(TAG, "خطا در بارگذاری مدل: ${e.message}", e)
-            Toast.makeText(this, "خطا در بارگذاری مدل: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "خطا: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
             return
         }
-
+        
         cameraExecutor = Executors.newSingleThreadExecutor()
-
+        
         if (allPermissionsGranted()) {
             startCamera()
         } else {
-            ActivityCompat.requestPermissions(
-                this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
-            )
+            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
         }
-
-        binding.btnCapture.setOnClickListener {
-            takePhoto()
-        }
-
-        binding.btnCancel.setOnClickListener {
-            finish()
-        }
+        
+        binding.btnCapture.setOnClickListener { takePhoto() }
+        binding.btnCancel.setOnClickListener { finish() }
     }
-
+    
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-
+        
         cameraProviderFuture.addListener({
             try {
                 val cameraProvider = cameraProviderFuture.get()
-
+                
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(binding.previewView.surfaceProvider)
                 }
-
+                
                 imageCapture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                     .build()
-
+                
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
+                
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    this, cameraSelector, preview, imageCapture
-                )
+                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
+                
             } catch (exc: Exception) {
-                Log.e(TAG, "استفاده از دوربین ناموفق بود", exc)
-                Toast.makeText(this, "خطا در راه‌اندازی دوربین: ${exc.message}", Toast.LENGTH_LONG).show()
+                Log.e(TAG, "خطا در دوربین: ${exc.message}", exc)
             }
         }, ContextCompat.getMainExecutor(this))
     }
-
+    
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
-
+        
         val photoFile = File(
             externalCacheDir,
-            SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
-                .format(System.currentTimeMillis()) + ".jpg"
+            SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US).format(Date()) + ".jpg"
         )
-
+        
         val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-
+        
         imageCapture.takePicture(
             outputOptions,
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    try {
-                        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
-                        if (bitmap != null) {
-                            detectInImage(bitmap)
-                        } else {
-                            Toast.makeText(this@CameraActivity, "خطا در بارگذاری تصویر", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "خطا در بارگذاری تصویر: ${e.message}", e)
-                        Toast.makeText(this@CameraActivity, "خطا: ${e.message}", Toast.LENGTH_LONG).show()
+                    val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
+                    if (bitmap != null) {
+                        detectInImage(bitmap)
                     }
                 }
-
+                
                 override fun onError(exc: ImageCaptureException) {
-                    Log.e(TAG, "عکس‌برداری ناموفق بود", exc)
-                    Toast.makeText(this@CameraActivity, "خطا در عکس‌برداری", Toast.LENGTH_SHORT).show()
+                    Log.e(TAG, "خطا در عکس‌برداری", exc)
                 }
             }
         )
     }
-
+    
     private fun detectInImage(bitmap: android.graphics.Bitmap) {
         binding.progressBar.isVisible = true
         
         cameraExecutor.execute {
-            try {
-                val results = detector?.detect(bitmap) ?: emptyList()
+            val results = detector?.detect(bitmap) ?: emptyList()
+            
+            runOnUiThread {
+                binding.progressBar.isVisible = false
                 
-                runOnUiThread {
-                    binding.progressBar.isVisible = false
-                    
-                    if (results.isNotEmpty()) {
-                        val topResult = results[0]
-                        val intent = Intent(this, ResultActivity::class.java).apply {
-                            putExtra("class_name", topResult.className)
-                            putExtra("confidence", topResult.confidence)
-                            putExtra("class_id", topResult.classId)
-                        }
-                        startActivity(intent)
-                        finish()
-                    } else {
-                        Toast.makeText(this, "حشره‌ای تشخیص داده نشد", Toast.LENGTH_SHORT).show()
+                if (results.isNotEmpty()) {
+                    val topResult = results[0]
+                    val intent = Intent(this, ResultActivity::class.java).apply {
+                        putExtra("class_name", topResult.className)
+                        putExtra("confidence", topResult.confidence)
+                        putExtra("class_id", topResult.classId)
                     }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "خطا در تشخیص: ${e.message}", e)
-                runOnUiThread {
-                    binding.progressBar.isVisible = false
-                    Toast.makeText(this, "خطا در تشخیص: ${e.message}", Toast.LENGTH_LONG).show()
+                    startActivity(intent)
+                    finish()
+                } else {
+                    Toast.makeText(this, "حشره‌ای تشخیص داده نشد", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
-
+    
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<String>, grantResults: IntArray
-    ) {
+    
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
                 startCamera()
             } else {
-                Toast.makeText(this, "دسترسی‌ها اعطا نشدند", Toast.LENGTH_SHORT).show()
                 finish()
             }
         }
     }
-
+    
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
