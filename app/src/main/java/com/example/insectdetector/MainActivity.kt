@@ -28,7 +28,11 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            detectFromImage(it)
+            // ✅ ارسال URI به ResultActivity
+            val intent = Intent(this, ResultActivity::class.java).apply {
+                putExtra("image_uri", it.toString())
+            }
+            startActivity(intent)
         }
     }
 
@@ -65,18 +69,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openCamera() {
-        val intent = Intent(this, CameraActivity::class.java)
-        startActivity(intent)
+        try {
+            val intent = Intent(this, CameraActivity::class.java)
+            startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "خطا در باز کردن دوربین: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun openGallery() {
-        galleryLauncher.launch("image/*")
-    }
-
-    private fun detectFromImage(uri: Uri) {
-        val intent = Intent(this, ResultActivity::class.java).apply {
-            putExtra("image_uri", uri.toString())
+        try {
+            galleryLauncher.launch("image/*")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "خطا در باز کردن گالری: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        startActivity(intent)
     }
 }
