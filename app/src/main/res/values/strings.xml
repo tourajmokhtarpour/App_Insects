@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">تشخیص حشرات</string>
+    <string name="take_photo">📷 باز کردن دوربین</string>
+    <string name="select_gallery">🖼️ انتخاب از گالری</string>
+    <string name="capture">📸</string>
+    <string name="cancel">✕</string>
+    <string name="back">بازگشت</string>
+    <string name="confidence_format">میزان اطمینان: %s٪</string>
+    <string name="family_format">خانواده: %s</string>
+    <string name="habitat_format">زیستگاه: %s</string>
+    <string name="diet_format">تغذیه: %s</string>
+    <string name="lifecycle_format">چرخه زندگی: %s</string>
+    <string name="description_title">توضیحات</string>
+    <string name="facts_title">نکات جالب</string>
+    <string name="warning_dangerous">⚠️ این حشره ممکن است خطرناک باشد</string>
+    <string name="no_insect_detected">حشره‌ای تشخیص داده نشد</string>
+    <string name="camera_permission_required">دسترسی دوربین لازم است</string>
+    <string name="permissions_not_granted">دسترسی‌ها اعطا نشدند</string>
+    <string name="photo_error">خطا در عکس‌برداری</string>
+    <string name="subtitle">حشره خود را عکس بگیرید یا از گالری انتخاب کنید</string>
+    <string name="detecting">در حال تشخیص...</string>
+</resources>
