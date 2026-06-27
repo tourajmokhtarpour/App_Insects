@@ -2,8 +2,10 @@ package com.example.insectdetector
 
 import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.location.Location
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -15,6 +17,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import com.example.insectdetector.databinding.ActivityCameraBinding
 import com.example.insectdetector.detector.YOLODetector
+import com.example.insectdetector.utils.DataRecorder
+import com.example.insectdetector.utils.LocationHelper
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -27,6 +31,10 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private var imageCapture: ImageCapture? = null
     private var detector: YOLODetector? = null
+    private lateinit var locationHelper: LocationHelper
+    private lateinit var dataRecorder: DataRecorder
+    private lateinit var prefs: SharedPreferences
+    private var currentLocation: Location? = null
     
     companion object {
         private const val TAG = "CameraActivity"
@@ -39,6 +47,10 @@ class CameraActivity : AppCompatActivity() {
         binding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
+        locationHelper = LocationHelper(this)
+        dataRecorder = DataRecorder(this)
+        prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        
         try {
             detector = YOLODetector(this)
         } catch (e: Exception) {
@@ -50,6 +62,8 @@ class CameraActivity : AppCompatActivity() {
         
         cameraExecutor = Executors.newSingleThreadExecutor()
         
+        getLocation()
+        
         if (allPermissionsGranted()) {
             startCamera()
         } else {
@@ -58,6 +72,24 @@ class CameraActivity : AppCompatActivity() {
         
         binding.btnCapture.setOnClickListener { takePhoto() }
         binding.btnCancel.setOnClickListener { finish() }
+    }
+    
+    private fun getLocation() {
+        binding.tvLocation.isVisible = true
+        binding.tvLocation.text = "در حال دریافت موقعیت..."
+        
+        locationHelper.getCurrentLocation { location ->
+            currentLocation = location
+            runOnUiThread {
+                if (location != null) {
+                    binding.tvLocation.text = locationHelper.formatLocation(location)
+                    Log.d(TAG, "موقعیت: ${location.latitude}, ${location.longitude}")
+                } else {
+                    binding.tvLocation.text = "موقعیت مکانی: نامشخص"
+                    Log.w(TAG, "موقعیت دریافت نشد")
+                }
+            }
+        }
     }
     
     private fun startCamera() {
@@ -125,13 +157,59 @@ class CameraActivity : AppCompatActivity() {
                 
                 if (results.isNotEmpty()) {
                     val topResult = results[0]
-                    val intent = Intent(this, ResultActivity::class.java).apply {
-                        putExtra("class_name", topResult.className)
-                        putExtra("confidence", topResult.confidence)
-                        putExtra("class_id", topResult.classId)
+                    
+                    // ✅ بررسی درصد تشخیص
+                    if (topResult.confidence >= 0.50f) {
+                        // دریافت نام کاربر
+                        val userName = prefs.getString("user_name", "نامشخص") ?: "نامشخص"
+                        
+                        // دریافت مختصات
+                        val latitude = currentLocation?.latitude ?: 0.0
+                        val longitude = currentLocation?.longitude ?: 0.0
+                        
+                        // ✅ ثبت اطلاعات
+                        val recordResult = dataRecorder.recordDetection(
+                            bitmap = bitmap,
+                            className = topResult.className,
+                            confidence = topResult.confidence,
+                            latitude = latitude,
+                            longitude = longitude,
+                            userName = userName
+                        )
+                        
+                        if (recordResult.success) {
+                            Toast.makeText(
+                                this,
+                                "✅ ثبت شد: ${topResult.className}\nکلید: ${recordResult.primaryKey}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                this,
+                                "❌ خطا: ${recordResult.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        
+                        // انتقال به صفحه نتیجه
+                        val intent = Intent(this, ResultActivity::class.java).apply {
+                            putExtra("class_name", topResult.className)
+                            putExtra("confidence", topResult.confidence)
+                            putExtra("class_id", topResult.classId)
+                            putExtra("latitude", latitude)
+                            putExtra("longitude", longitude)
+                            putExtra("primary_key", recordResult.primaryKey)
+                        }
+                        startActivity(intent)
+                        finish()
+                        
+                    } else {
+                        Toast.makeText(
+                            this,
+                            "درصد تشخیص پایین است: ${String.format("%.1f", topResult.confidence * 100)}٪\nحداقل 50٪ لازم است",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
-                    startActivity(intent)
-                    finish()
                 } else {
                     Toast.makeText(this, "حشره‌ای تشخیص داده نشد", Toast.LENGTH_SHORT).show()
                 }
