@@ -169,24 +169,22 @@ class ResultActivity : AppCompatActivity() {
                 
                 // نمایش کلید اصلی
                 if (!primaryKey.isNullOrEmpty()) {
-                    tvPrimaryKey.isVisible = true
-                    tvPrimaryKey.text = "کلید اصلی: $primaryKey"
+                    primaryKeyCard.isVisible = true
+                    tvPrimaryKey.text = "🔑 $primaryKey"
                 } else {
-                    tvPrimaryKey.isVisible = false
+                    primaryKeyCard.isVisible = false
                 }
                 
                 // نمایش موقعیت مکانی
                 if (latitude != 0.0 && longitude != 0.0) {
-                    tvLocation.isVisible = true
+                    locationCard.isVisible = true
                     tvLocation.text = String.format(
-                        "موقعیت: %.6f, %.6f",
+                        "📍 %.6f, %.6f",
                         latitude,
                         longitude
                     )
                     
                     val mapsLink = "https://maps.google.com/?q=$latitude,$longitude"
-                    tvMapsLink.isVisible = true
-                    tvMapsLink.text = "🗺️ مشاهده در نقشه"
                     tvMapsLink.setOnClickListener {
                         val intent = android.content.Intent(
                             android.content.Intent.ACTION_VIEW,
@@ -195,8 +193,7 @@ class ResultActivity : AppCompatActivity() {
                         startActivity(intent)
                     }
                 } else {
-                    tvLocation.isVisible = false
-                    tvMapsLink.isVisible = false
+                    locationCard.isVisible = false
                 }
                 
                 if (insectInfo.isDangerous) {
