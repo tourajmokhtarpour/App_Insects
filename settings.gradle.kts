@@ -14,4 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "App_Insects
+rootProject.name = "App_Insects"
+include(":app")
