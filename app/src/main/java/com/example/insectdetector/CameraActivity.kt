@@ -10,7 +10,10 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.*
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -21,7 +24,8 @@ import com.example.insectdetector.utils.DataRecorder
 import com.example.insectdetector.utils.LocationHelper
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -76,16 +80,17 @@ class CameraActivity : AppCompatActivity() {
     
     private fun getLocation() {
         binding.tvLocation.isVisible = true
-        binding.tvLocation.text = "در حال دریافت موقعیت..."
+        binding.tvLocation.text = "📍 در حال دریافت موقعیت..."
         
-        locationHelper.getCurrentLocation { location ->
+        // ✅ اصلاح شده با نوع مشخص
+        locationHelper.getCurrentLocation { location: Location? ->
             currentLocation = location
             runOnUiThread {
                 if (location != null) {
                     binding.tvLocation.text = locationHelper.formatLocation(location)
                     Log.d(TAG, "موقعیت: ${location.latitude}, ${location.longitude}")
                 } else {
-                    binding.tvLocation.text = "موقعیت مکانی: نامشخص"
+                    binding.tvLocation.text = "📍 موقعیت مکانی: نامشخص"
                     Log.w(TAG, "موقعیت دریافت نشد")
                 }
             }
@@ -141,6 +146,7 @@ class CameraActivity : AppCompatActivity() {
                 
                 override fun onError(exc: ImageCaptureException) {
                     Log.e(TAG, "خطا در عکس‌برداری", exc)
+                    Toast.makeText(this@CameraActivity, "خطا در عکس‌برداری", Toast.LENGTH_SHORT).show()
                 }
             }
         )
@@ -158,16 +164,11 @@ class CameraActivity : AppCompatActivity() {
                 if (results.isNotEmpty()) {
                     val topResult = results[0]
                     
-                    // ✅ بررسی درصد تشخیص
                     if (topResult.confidence >= 0.50f) {
-                        // دریافت نام کاربر
                         val userName = prefs.getString("user_name", "نامشخص") ?: "نامشخص"
-                        
-                        // دریافت مختصات
                         val latitude = currentLocation?.latitude ?: 0.0
                         val longitude = currentLocation?.longitude ?: 0.0
                         
-                        // ✅ ثبت اطلاعات
                         val recordResult = dataRecorder.recordDetection(
                             bitmap = bitmap,
                             className = topResult.className,
@@ -191,7 +192,6 @@ class CameraActivity : AppCompatActivity() {
                             ).show()
                         }
                         
-                        // انتقال به صفحه نتیجه
                         val intent = Intent(this, ResultActivity::class.java).apply {
                             putExtra("class_name", topResult.className)
                             putExtra("confidence", topResult.confidence)
