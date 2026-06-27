@@ -10,6 +10,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import com.example.insectdetector.databinding.ActivityResultBinding
 import com.example.insectdetector.detector.YOLODetector
+import com.example.insectdetector.utils.DataRecorder
+import com.example.insectdetector.utils.LocationHelper
 import java.text.DecimalFormat
 import java.util.concurrent.Executors
 
@@ -17,6 +19,8 @@ class ResultActivity : AppCompatActivity() {
     
     private lateinit var binding: ActivityResultBinding
     private lateinit var detector: YOLODetector
+    private lateinit var locationHelper: LocationHelper
+    private lateinit var dataRecorder: DataRecorder
     private val executor = Executors.newSingleThreadExecutor()
     
     companion object {
@@ -27,6 +31,9 @@ class ResultActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityResultBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        locationHelper = LocationHelper(this)
+        dataRecorder = DataRecorder(this)
         
         try {
             detector = YOLODetector(this)
@@ -40,6 +47,10 @@ class ResultActivity : AppCompatActivity() {
         val imageUri = intent.getStringExtra("image_uri")
         val className = intent.getStringExtra("class_name")
         val confidence = intent.getFloatExtra("confidence", 0f)
+        val primaryKey = intent.getStringExtra("primary_key")
+        
+        val latitude = intent.getDoubleExtra("latitude", 0.0)
+        val longitude = intent.getDoubleExtra("longitude", 0.0)
         
         if (imageUri != null) {
             try {
@@ -53,14 +64,14 @@ class ResultActivity : AppCompatActivity() {
                     if (className == null || className.isEmpty()) {
                         detectInImage(bitmap)
                     } else {
-                        displayResults(className, confidence)
+                        displayResults(className, confidence, latitude, longitude, primaryKey)
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "خطا: ${e.message}", e)
             }
         } else if (className != null) {
-            displayResults(className, confidence)
+            displayResults(className, confidence, latitude, longitude, primaryKey)
         }
         
         binding.btnBack.setOnClickListener { finish() }
@@ -78,7 +89,46 @@ class ResultActivity : AppCompatActivity() {
                     
                     if (results.isNotEmpty()) {
                         val topResult = results[0]
-                        displayResults(topResult.className, topResult.confidence)
+                        
+                        if (topResult.confidence >= 0.50f) {
+                            val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+                            val userName = prefs.getString("user_name", "نامشخص") ?: "نامشخص"
+                            
+                            val latitude = intent.getDoubleExtra("latitude", 0.0)
+                            val longitude = intent.getDoubleExtra("longitude", 0.0)
+                            
+                            val recordResult = dataRecorder.recordDetection(
+                                bitmap = bitmap,
+                                className = topResult.className,
+                                confidence = topResult.confidence,
+                                latitude = latitude,
+                                longitude = longitude,
+                                userName = userName
+                            )
+                            
+                            if (recordResult.success) {
+                                Toast.makeText(
+                                    this,
+                                    "✅ ثبت شد: ${topResult.className}\nکلید: ${recordResult.primaryKey}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            
+                            displayResults(
+                                topResult.className,
+                                topResult.confidence,
+                                latitude,
+                                longitude,
+                                recordResult.primaryKey
+                            )
+                        } else {
+                            Toast.makeText(
+                                this,
+                                "درصد تشخیص پایین است: ${String.format("%.1f", topResult.confidence * 100)}٪",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            binding.tvClassName.text = "تشخیص پایین: ${String.format("%.1f", topResult.confidence * 100)}٪"
+                        }
                     } else {
                         Toast.makeText(this, "حشره‌ای تشخیص داده نشد", Toast.LENGTH_SHORT).show()
                         binding.tvClassName.text = "حشره‌ای تشخیص داده نشد"
@@ -94,7 +144,13 @@ class ResultActivity : AppCompatActivity() {
         }
     }
     
-    private fun displayResults(className: String, confidence: Float) {
+    private fun displayResults(
+        className: String,
+        confidence: Float,
+        latitude: Double,
+        longitude: Double,
+        primaryKey: String?
+    ) {
         try {
             val insectInfo = detector.getInsectInfo(className)
             val df = DecimalFormat("#.##")
@@ -110,6 +166,38 @@ class ResultActivity : AppCompatActivity() {
                 tvDiet.text = "تغذیه: ${insectInfo.diet}"
                 tvLifecycle.text = "چرخه زندگی: ${insectInfo.lifecycle}"
                 tvFacts.text = insectInfo.interestingFacts
+                
+                // نمایش کلید اصلی
+                if (!primaryKey.isNullOrEmpty()) {
+                    tvPrimaryKey.isVisible = true
+                    tvPrimaryKey.text = "کلید اصلی: $primaryKey"
+                } else {
+                    tvPrimaryKey.isVisible = false
+                }
+                
+                // نمایش موقعیت مکانی
+                if (latitude != 0.0 && longitude != 0.0) {
+                    tvLocation.isVisible = true
+                    tvLocation.text = String.format(
+                        "موقعیت: %.6f, %.6f",
+                        latitude,
+                        longitude
+                    )
+                    
+                    val mapsLink = "https://maps.google.com/?q=$latitude,$longitude"
+                    tvMapsLink.isVisible = true
+                    tvMapsLink.text = "🗺️ مشاهده در نقشه"
+                    tvMapsLink.setOnClickListener {
+                        val intent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            Uri.parse(mapsLink)
+                        )
+                        startActivity(intent)
+                    }
+                } else {
+                    tvLocation.isVisible = false
+                    tvMapsLink.isVisible = false
+                }
                 
                 if (insectInfo.isDangerous) {
                     warningCard.isVisible = true
