@@ -7,7 +7,7 @@
     android:background="@color/background"
     android:padding="16dp">
 
-    <!-- ✅ عنوان مرکز در بالا -->
+    <!-- عنوان مرکز در بالا -->
     <TextView
         android:id="@+id/tvCenterName"
         android:layout_width="0dp"
@@ -38,7 +38,7 @@
         app:layout_constraintTop_toBottomOf="@id/tvCenterName"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="32dp" />
+        android:layout_marginTop="24dp" />
 
     <!-- زیرعنوان -->
     <TextView
@@ -65,7 +65,7 @@
         app:layout_constraintTop_toBottomOf="@id/tvSubtitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="48dp" />
+        android:layout_marginTop="32dp" />
 
     <!-- دکمه گالری -->
     <com.google.android.material.button.MaterialButton
@@ -81,7 +81,189 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="16dp" />
 
-    <!-- ✅ خط جداکننده در پایین -->
+    <!-- ✅ کارت راهنمای عکس‌برداری -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardPhotoTips"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        app:cardBackgroundColor="#FFF8E1"
+        app:strokeWidth="1dp"
+        app:strokeColor="#FFC107"
+        app:layout_constraintTop_toBottomOf="@id/btnSelectFromGallery"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="24dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- عنوان کارت -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📸"
+                    android:textSize="20sp"
+                    android:layout_marginEnd="8dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="نکات مهم برای عکس‌برداری بهتر"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="#F57F17" />
+
+            </LinearLayout>
+
+            <!-- لیست نکات -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- نکته 1 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="✓"
+                        android:textColor="#4CAF50"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="حشره را در مرکز کادر قرار دهید"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_primary" />
+
+                </LinearLayout>
+
+                <!-- نکته 2 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="✓"
+                        android:textColor="#4CAF50"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="چندین عکس از زوایای مختلف بگیرید"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_primary" />
+
+                </LinearLayout>
+
+                <!-- نکته 3 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="✓"
+                        android:textColor="#4CAF50"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="نور کافی باشد (ترجیحاً نور طبیعی)"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_primary" />
+
+                </LinearLayout>
+
+                <!-- نکته 4 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="✓"
+                        android:textColor="#4CAF50"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="فاصله مناسب: 10-30 سانتی‌متر"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_primary" />
+
+                </LinearLayout>
+
+                <!-- نکته 5 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📍"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="GPS را برای ثبت موقعیت فعال نگه دارید"
+                        android:textSize="13sp"
+                        android:textColor="@color/primary"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- خط جداکننده در پایین -->
     <View
         android:id="@+id/divider"
         android:layout_width="0dp"
@@ -93,7 +275,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginBottom="12dp" />
 
-    <!-- ✅ نام بخش در پایین - خط اول -->
+    <!-- نام بخش در پایین - خط اول -->
     <TextView
         android:id="@+id/tvDepartment"
         android:layout_width="0dp"
@@ -109,7 +291,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginBottom="8dp" />
 
-    <!-- ✅ نام توسعه دهنده در پایین - خط دوم -->
+    <!-- نام توسعه دهنده در پایین - خط دوم -->
     <TextView
         android:id="@+id/tvDeveloper"
         android:layout_width="0dp"
