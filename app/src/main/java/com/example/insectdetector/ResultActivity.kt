@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import com.example.insectdetector.databinding.ActivityResultBinding
+import com.example.insectdetector.detector.DetectionResult
 import com.example.insectdetector.detector.YOLODetector
 import com.example.insectdetector.utils.DataRecorder
 import com.example.insectdetector.utils.LocationHelper
@@ -64,6 +65,7 @@ class ResultActivity : AppCompatActivity() {
                     if (className == null || className.isEmpty()) {
                         detectInImage(bitmap)
                     } else {
+                        // نمایش نتیجه از CameraActivity (بدون Bounding Box)
                         displayResults(className, confidence, latitude, longitude, primaryKey)
                     }
                 }
@@ -89,6 +91,9 @@ class ResultActivity : AppCompatActivity() {
                     
                     if (results.isNotEmpty()) {
                         val topResult = results[0]
+                        
+                        // ✅ نمایش Bounding Box روی تصویر
+                        binding.overlayView.setDetections(results)
                         
                         if (topResult.confidence >= 0.50f) {
                             val prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
@@ -179,7 +184,7 @@ class ResultActivity : AppCompatActivity() {
                 if (latitude != 0.0 && longitude != 0.0) {
                     locationCard.isVisible = true
                     tvLocation.text = String.format(
-                        "📍 %.6f, %.6f",
+                        " %.6f, %.6f",
                         latitude,
                         longitude
                     )
