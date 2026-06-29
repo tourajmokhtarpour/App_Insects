@@ -23,40 +23,54 @@ class InsectOverlayView @JvmOverloads constructor(
     private val backgroundPaint = Paint()
     private val formatter = DecimalFormat("#.##")
 
-    // رنگ‌های مختلف برای گونه‌های مختلف
+    private var imageWidth: Int = 1
+    private var imageHeight: Int = 1
+    private var isCameraMode: Boolean = true
+
     private val colors = intArrayOf(
-        Color.parseColor("#FF5722"),  // نارنجی
-        Color.parseColor("#2196F3"),  // آبی
-        Color.parseColor("#4CAF50"),  // سبز
-        Color.parseColor("#9C27B0"),  // بنفش
-        Color.parseColor("#FFC107"),  // زرد
-        Color.parseColor("#E91E63"),  // صورتی
-        Color.parseColor("#00BCD4"),  // فیروزه‌ای
-        Color.parseColor("#FF9800")   // نارنجی روشن
+        Color.parseColor("#FF5722"),
+        Color.parseColor("#2196F3"),
+        Color.parseColor("#4CAF50"),
+        Color.parseColor("#9C27B0"),
+        Color.parseColor("#FFC107"),
+        Color.parseColor("#E91E63"),
+        Color.parseColor("#00BCD4"),
+        Color.parseColor("#FF9800")
     )
 
     init {
-        // تنظیمات Paint برای کادر
         boxPaint.apply {
             style = Paint.Style.STROKE
-            strokeWidth = 8f
+            strokeWidth = 6f
             isAntiAlias = true
         }
 
-        // تنظیمات Paint برای متن
         textPaint.apply {
             color = Color.WHITE
-            textSize = 42f
+            textSize = 36f
             isAntiAlias = true
             typeface = Typeface.DEFAULT_BOLD
         }
 
-        // تنظیمات Paint برای پس‌زمینه متن
         backgroundPaint.apply {
-            color = Color.parseColor("#CC000000") // سیاه نیمه‌شفاف
             style = Paint.Style.FILL
             isAntiAlias = true
         }
+    }
+
+    /**
+     * تنظیم ابعاد تصویر برای مقیاس‌دهی صحیح
+     */
+    fun setImageDimensions(width: Int, height: Int) {
+        imageWidth = width.coerceAtLeast(1)
+        imageHeight = height.coerceAtLeast(1)
+    }
+
+    /**
+     * تنظیم حالت (دوربین یا گالری)
+     */
+    fun setCameraMode(isCamera: Boolean) {
+        isCameraMode = isCamera
     }
 
     /**
@@ -65,7 +79,7 @@ class InsectOverlayView @JvmOverloads constructor(
     fun setDetections(newDetections: List<DetectionResult>) {
         detections.clear()
         detections.addAll(newDetections)
-        invalidate() // درخواست رسم مجدد
+        invalidate()
     }
 
     /**
@@ -81,40 +95,38 @@ class InsectOverlayView @JvmOverloads constructor(
 
         if (detections.isEmpty()) return
 
+        val viewWidth = width.toFloat()
+        val viewHeight = height.toFloat()
+
         for (i in detections.indices) {
             val detection = detections[i]
             val color = colors[i % colors.size]
 
-            // رسم کادر
-            boxPaint.color = color
-            canvas.drawRect(detection.boundingBox, boxPaint)
+            val scaledBox = scaleBoundingBox(detection.boundingBox, viewWidth, viewHeight)
 
-            // متن برچسب
+            boxPaint.color = color
+            canvas.drawRect(scaledBox, boxPaint)
+
             val confidencePercent = formatter.format(detection.confidence * 100)
             val label = "${detection.className} ($confidencePercent%)"
 
-            // اندازه متن
             val textBounds = android.graphics.Rect()
             textPaint.getTextBounds(label, 0, label.length, textBounds)
             val textWidth = textBounds.width()
             val textHeight = textBounds.height()
 
-            // موقعیت برچسب (بالای کادر)
-            var labelX = detection.boundingBox.left
-            var labelY = detection.boundingBox.top - 10f
+            var labelX = scaledBox.left
+            var labelY = scaledBox.top - 10f
 
-            // اگر برچسب از بالا بیرون زد، داخل کادر قرار بده
             if (labelY - textHeight < 0) {
-                labelY = detection.boundingBox.top + textHeight + 10f
+                labelY = scaledBox.top + textHeight + 10f
             }
 
-            // اگر برچسب از راست بیرون زد، تنظیم کن
-            if (labelX + textWidth > width) {
-                labelX = width - textWidth - 10f
+            if (labelX + textWidth > viewWidth) {
+                labelX = viewWidth - textWidth - 10f
             }
 
-            // پس‌زمینه برچسب
-            val padding = 12f
+            val padding = 10f
             backgroundPaint.color = color
             val bgRect = RectF(
                 labelX - padding,
@@ -122,11 +134,26 @@ class InsectOverlayView @JvmOverloads constructor(
                 labelX + textWidth + padding,
                 labelY + padding
             )
-            canvas.drawRoundRect(bgRect, 12f, 12f, backgroundPaint)
+            canvas.drawRoundRect(bgRect, 8f, 8f, backgroundPaint)
 
-            // رسم متن
             textPaint.color = Color.WHITE
             canvas.drawText(label, labelX, labelY, textPaint)
+        }
+    }
+
+    private fun scaleBoundingBox(originalBox: RectF, viewWidth: Float, viewHeight: Float): RectF {
+        return if (isCameraMode) {
+            val scaleX = viewWidth / imageWidth
+            val scaleY = viewHeight / imageHeight
+
+            RectF(
+                originalBox.left * scaleX,
+                originalBox.top * scaleY,
+                originalBox.right * scaleX,
+                originalBox.bottom * scaleY
+            )
+        } else {
+            originalBox
         }
     }
 }
