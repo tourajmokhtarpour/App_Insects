@@ -7,9 +7,9 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import com.example.insectdetector.databinding.ActivityResultBinding
-import com.example.insectdetector.detector.DetectionResult
 import com.example.insectdetector.detector.YOLODetector
 import com.example.insectdetector.utils.DataRecorder
 import com.example.insectdetector.utils.LocationHelper
@@ -52,25 +52,40 @@ class ResultActivity : AppCompatActivity() {
         
         val latitude = intent.getDoubleExtra("latitude", 0.0)
         val longitude = intent.getDoubleExtra("longitude", 0.0)
+        val fromCamera = intent.getBooleanExtra("from_camera", false)
+        
+        Log.d(TAG, "imageUri: $imageUri, className: $className, fromCamera: $fromCamera")
         
         if (imageUri != null) {
             try {
-                val inputStream = contentResolver.openInputStream(Uri.parse(imageUri))
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
+                // ✅ بارگذاری bitmap بر اساس نوع URI
+                val bitmap = loadBitmapFromUri(imageUri)
                 
                 if (bitmap != null) {
                     binding.ivInsectImage.setImageBitmap(bitmap)
                     
+                    // ✅ تنظیم ابعاد تصویر در OverlayView
+                    binding.overlayView.setImageDimensions(bitmap.width, bitmap.height)
+                    binding.overlayView.setCameraMode(false)
+                    
                     if (className == null || className.isEmpty()) {
+                        // ✅ از گالری آمده و نیاز به تشخیص دارد
                         detectInImage(bitmap)
+                    } else if (fromCamera) {
+                        // ✅ از دوربین آمده - رسم Bounding Box با تشخیص مجدد
+                        drawBoundingBoxFromImage(bitmap)
+                        displayResults(className, confidence, latitude, longitude, primaryKey)
                     } else {
-                        // نمایش نتیجه از CameraActivity (بدون Bounding Box)
+                        // حالت پیش‌فرض
                         displayResults(className, confidence, latitude, longitude, primaryKey)
                     }
+                } else {
+                    Log.e(TAG, "Bitmap null است")
+                    Toast.makeText(this, "خطا در بارگذاری تصویر", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "خطا: ${e.message}", e)
+                Log.e(TAG, "خطا در بارگذاری تصویر: ${e.message}", e)
+                Toast.makeText(this, "خطا: ${e.message}", Toast.LENGTH_LONG).show()
             }
         } else if (className != null) {
             displayResults(className, confidence, latitude, longitude, primaryKey)
@@ -79,6 +94,33 @@ class ResultActivity : AppCompatActivity() {
         binding.btnBack.setOnClickListener { finish() }
     }
     
+    /**
+     * ✅ بارگذاری Bitmap از URI (پشتیبانی از file:// و content://)
+     */
+    private fun loadBitmapFromUri(uriString: String): Bitmap? {
+        return try {
+            if (uriString.startsWith("file://")) {
+                // ✅ بارگذاری از فایل محلی (از دوربین)
+                val filePath = Uri.parse(uriString).path
+                Log.d(TAG, "بارگذاری از فایل: $filePath")
+                BitmapFactory.decodeFile(filePath)
+            } else {
+                // ✅ بارگذاری از گالری (content://)
+                Log.d(TAG, "بارگذاری از گالری: $uriString")
+                val inputStream = contentResolver.openInputStream(Uri.parse(uriString))
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                bitmap
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "خطا در بارگذاری bitmap: ${e.message}", e)
+            null
+        }
+    }
+    
+    /**
+     * ✅ تشخیص از تصویر (از گالری)
+     */
     private fun detectInImage(bitmap: Bitmap) {
         binding.progressBar.isVisible = true
         
@@ -149,6 +191,32 @@ class ResultActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * ✅ رسم Bounding Box برای تصاویر از دوربین
+     */
+    private fun drawBoundingBoxFromImage(bitmap: Bitmap) {
+        executor.execute {
+            try {
+                // اجرای تشخیص برای به دست آوردن Bounding Box
+                val results = detector.detect(bitmap)
+                
+                runOnUiThread {
+                    if (results.isNotEmpty()) {
+                        binding.overlayView.setDetections(results)
+                        Log.d(TAG, "✅ Bounding Box رسم شد: ${results.size} تشخیص")
+                    } else {
+                        Log.w(TAG, "⚠️ تشخیصی برای رسم Bounding Box یافت نشد")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "خطا در رسم Bounding Box: ${e.message}", e)
+            }
+        }
+    }
+    
+    /**
+     * ✅ نمایش نتایج تشخیص
+     */
     private fun displayResults(
         className: String,
         confidence: Float,
@@ -184,7 +252,7 @@ class ResultActivity : AppCompatActivity() {
                 if (latitude != 0.0 && longitude != 0.0) {
                     locationCard.isVisible = true
                     tvLocation.text = String.format(
-                        " %.6f, %.6f",
+                        "📍 %.6f, %.6f",
                         latitude,
                         longitude
                     )
