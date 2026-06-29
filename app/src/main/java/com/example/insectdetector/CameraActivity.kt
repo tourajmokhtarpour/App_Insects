@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.location.Location
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -39,6 +40,9 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var dataRecorder: DataRecorder
     private lateinit var prefs: SharedPreferences
     private var currentLocation: Location? = null
+    
+    // ✅ متغیر جدید برای ذخیره مسیر فایل عکس فعلی
+    private var currentPhotoFile: File? = null
     
     companion object {
         private const val TAG = "CameraActivity"
@@ -82,7 +86,6 @@ class CameraActivity : AppCompatActivity() {
         binding.tvLocation.isVisible = true
         binding.tvLocation.text = "📍 در حال دریافت موقعیت..."
         
-        // ✅ اصلاح شده با نوع مشخص
         locationHelper.getCurrentLocation { location: Location? ->
             currentLocation = location
             runOnUiThread {
@@ -126,10 +129,14 @@ class CameraActivity : AppCompatActivity() {
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
         
+        // ✅ ایجاد فایل عکس با نام یکتا
         val photoFile = File(
             externalCacheDir,
             SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US).format(Date()) + ".jpg"
         )
+        
+        // ✅ ذخیره در متغیر کلاس برای استفاده بعدی
+        currentPhotoFile = photoFile
         
         val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
         
@@ -140,7 +147,10 @@ class CameraActivity : AppCompatActivity() {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
                     if (bitmap != null) {
-                        detectInImage(bitmap)
+                        detectInImage(bitmap, photoFile)
+                    } else {
+                        Log.e(TAG, "خطا در بارگذاری bitmap از فایل")
+                        Toast.makeText(this@CameraActivity, "خطا در بارگذاری تصویر", Toast.LENGTH_SHORT).show()
                     }
                 }
                 
@@ -152,7 +162,8 @@ class CameraActivity : AppCompatActivity() {
         )
     }
     
-    private fun detectInImage(bitmap: android.graphics.Bitmap) {
+    // ✅ اضافه شدن پارامتر photoFile برای ارسال به ResultActivity
+    private fun detectInImage(bitmap: android.graphics.Bitmap, photoFile: File) {
         binding.progressBar.isVisible = true
         
         cameraExecutor.execute {
@@ -192,13 +203,17 @@ class CameraActivity : AppCompatActivity() {
                             ).show()
                         }
                         
+                        // ✅ ارسال اطلاعات به ResultActivity
                         val intent = Intent(this, ResultActivity::class.java).apply {
+                            // ✅ ارسال URI تصویر برای نمایش Bounding Box
+                            putExtra("image_uri", Uri.fromFile(photoFile).toString())
                             putExtra("class_name", topResult.className)
                             putExtra("confidence", topResult.confidence)
                             putExtra("class_id", topResult.classId)
                             putExtra("latitude", latitude)
                             putExtra("longitude", longitude)
                             putExtra("primary_key", recordResult.primaryKey)
+                            putExtra("from_camera", true)  // ✅ نشان می‌دهد از دوربین آمده
                         }
                         startActivity(intent)
                         finish()
