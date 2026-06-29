@@ -21,14 +21,28 @@
             android:visibility="gone"
             android:layout_marginBottom="16dp" />
 
-        <!-- تصویر حشره -->
-        <ImageView
-            android:id="@+id/ivInsectImage"
+        <!-- ✅ کانتینر تصویر با Overlay -->
+        <FrameLayout
+            android:id="@+id/imageContainer"
             android:layout_width="match_parent"
             android:layout_height="300dp"
-            android:scaleType="centerCrop"
-            android:layout_marginBottom="16dp"
-            android:contentDescription="تصویر حشره" />
+            android:layout_marginBottom="16dp">
+
+            <!-- تصویر حشره -->
+            <ImageView
+                android:id="@+id/ivInsectImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="تصویر حشره" />
+
+            <!-- ✅ لایه Overlay برای Bounding Box -->
+            <com.example.insectdetector.view.InsectOverlayView
+                android:id="@+id/overlayView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+        </FrameLayout>
 
         <!-- کارت اطلاعات اصلی -->
         <com.google.android.material.card.MaterialCardView
@@ -206,15 +220,15 @@
 
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ✅ کارت کلید اصلی -->
+        <!-- کارت کلید اصلی -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/primaryKeyCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="12dp"
             app:cardElevation="4dp"
             app:cardBackgroundColor="#E8F5E9"
             android:visibility="gone"
-            android:id="@+id/primaryKeyCard"
             android:layout_marginBottom="16dp">
 
             <LinearLayout
@@ -245,15 +259,15 @@
 
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ✅ کارت موقعیت مکانی -->
+        <!-- کارت موقعیت مکانی -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/locationCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="12dp"
             app:cardElevation="4dp"
             app:cardBackgroundColor="#E3F2FD"
             android:visibility="gone"
-            android:id="@+id/locationCard"
             android:layout_marginBottom="16dp">
 
             <LinearLayout
