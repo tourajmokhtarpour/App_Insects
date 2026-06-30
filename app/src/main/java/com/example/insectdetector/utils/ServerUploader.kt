@@ -16,7 +16,7 @@ class ServerUploader(private val context: Context) {
         
         // ✅ آدرس سرور Hugging Face خود را اینجا وارد کنید
         // مثال: https://your-username-insect-detector-server.hf.space
-        const val SERVER_URL = "https://YOUR_USERNAME-insect-detector-server.hf.space"
+        const val SERVER_URL = "https://touraj732-insect-detector-server.hf.space"
     }
     
     private val client: OkHttpClient = OkHttpClient.Builder()
