@@ -6,12 +6,12 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
 import android.graphics.Matrix
+import android.graphics.YuvImage
 import android.location.Location
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +25,7 @@ import com.example.insectdetector.detector.DetectionResult
 import com.example.insectdetector.detector.YOLODetector
 import com.example.insectdetector.utils.DataRecorder
 import com.example.insectdetector.utils.LocationHelper
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,11 +49,11 @@ class CameraActivity : AppCompatActivity() {
     
     // ✅ متغیرهای تشخیص بلادرنگ
     private val isProcessing = AtomicBoolean(false)
-    private var lastDetectionResults: List<DetectionResult> = emptyList()
+    private var frameCount = 0  // ✅ شمارنده فریم برای دیباگ
     private var lastDetectionTime: Long = 0
-    private val DETECTION_INTERVAL_MS = 500L // هر 500ms یکبار تشخیص
+    private val DETECTION_INTERVAL_MS = 500L
     
-    // ✅ آخرین تشخیص معتبر برای ثبت
+    // ✅ آخرین تشخیص معتبر
     private var lastValidDetection: DetectionResult? = null
     
     companion object {
@@ -66,14 +67,17 @@ class CameraActivity : AppCompatActivity() {
         binding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
+        Log.d(TAG, "🚀 CameraActivity onCreate شروع شد")
+        
         locationHelper = LocationHelper(this)
         dataRecorder = DataRecorder(this)
         prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
         
         try {
             detector = YOLODetector(this)
+            Log.d(TAG, "✅ مدل با موفقیت بارگذاری شد")
         } catch (e: Exception) {
-            Log.e(TAG, "خطا در بارگذاری مدل: ${e.message}", e)
+            Log.e(TAG, "❌ خطا در بارگذاری مدل: ${e.message}", e)
             Toast.makeText(this, "خطا: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
             return
@@ -83,7 +87,6 @@ class CameraActivity : AppCompatActivity() {
         analysisExecutor = Executors.newSingleThreadExecutor()
         
         getLocation()
-        
         setupButtons()
         
         if (allPermissionsGranted()) {
@@ -94,13 +97,10 @@ class CameraActivity : AppCompatActivity() {
     }
     
     private fun setupButtons() {
-        // ✅ دکمه OK: فقط زمانی فعال است که تشخیص معتبر داریم
         binding.btnCapture.isEnabled = false
         binding.btnCapture.setOnClickListener { captureAndSave() }
-        
         binding.btnCancel.setOnClickListener { finish() }
         
-        // دکمه راهنما
         binding.btnInfo.setOnClickListener {
             Toast.makeText(
                 this,
@@ -119,16 +119,17 @@ class CameraActivity : AppCompatActivity() {
             runOnUiThread {
                 if (location != null) {
                     binding.tvLocation.text = locationHelper.formatLocation(location)
-                    Log.d(TAG, "موقعیت: ${location.latitude}, ${location.longitude}")
+                    Log.d(TAG, "📍 موقعیت: ${location.latitude}, ${location.longitude}")
                 } else {
-                    binding.tvLocation.text = "📍 موقعیت مکانی: نامشخص"
-                    Log.w(TAG, "موقعیت دریافت نشد")
+                    binding.tvLocation.text = " موقعیت مکانی: نامشخص"
                 }
             }
         }
     }
     
     private fun startCamera() {
+        Log.d(TAG, "📷 شروع راه‌اندازی دوربین...")
+        
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         
         cameraProviderFuture.addListener({
@@ -142,18 +143,20 @@ class CameraActivity : AppCompatActivity() {
                         it.setSurfaceProvider(binding.previewView.surfaceProvider)
                     }
                 
-                // ✅ ImageCapture برای گرفتن عکس
+                // ✅ ImageCapture
                 imageCapture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                     .build()
                 
-                // ✅ ImageAnalysis برای تشخیص بلادرنگ
+                // ✅ ImageAnalysis - تنظیمات ساده و سازگار
                 val imageAnalysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                     .build()
                     .also {
-                        it.setAnalyzer(analysisExecutor, ::analyzeImage)
+                        Log.d(TAG, "🔍 تنظیم ImageAnalysis Analyzer...")
+                        it.setAnalyzer(analysisExecutor, ImageAnalysis.Analyzer { imageProxy ->
+                            analyzeImage(imageProxy)
+                        })
                     }
                 
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -167,19 +170,28 @@ class CameraActivity : AppCompatActivity() {
                     imageAnalysis
                 )
                 
+                Log.d(TAG, "✅ دوربین با موفقیت راه‌اندازی شد - ImageAnalysis فعال است")
+                
             } catch (exc: Exception) {
-                Log.e(TAG, "خطا در راه‌اندازی دوربین: ${exc.message}", exc)
+                Log.e(TAG, " خطا در راه‌اندازی دوربین: ${exc.message}", exc)
             }
         }, ContextCompat.getMainExecutor(this))
     }
     
     /**
-     * ✅ تحلیل بلادرنگ فریم‌های دوربین
+     * ✅ تحلیل بلادرنگ - با لاگ‌های کامل
      */
     private fun analyzeImage(imageProxy: ImageProxy) {
+        frameCount++
+        
+        // لاگ هر 10 فریم
+        if (frameCount % 10 == 0) {
+            Log.d(TAG, "📸 فریم #$frameCount دریافت شد - اندازه: ${imageProxy.width}x${imageProxy.height}")
+        }
+        
         val currentTime = System.currentTimeMillis()
         
-        // Throttle: فقط هر DETECTION_INTERVAL_MS یکبار تشخیص انجام شود
+        // Throttle
         if (currentTime - lastDetectionTime < DETECTION_INTERVAL_MS) {
             imageProxy.close()
             return
@@ -187,47 +199,57 @@ class CameraActivity : AppCompatActivity() {
         
         // جلوگیری از پردازش همزمان
         if (!isProcessing.compareAndSet(false, true)) {
+            if (frameCount % 50 == 0) {
+                Log.d(TAG, "⏳ پردازش قبلی هنوز در حال انجام است - فریم رد شد")
+            }
             imageProxy.close()
             return
         }
         
         try {
-            // تبدیل ImageProxy به Bitmap
-            val bitmap = imageProxy.toBitmap()
+            Log.d(TAG, "🔄 شروع پردازش فریم #$frameCount...")
             
-            // چرخش bitmap اگر نیاز است
-            val rotatedBitmap = rotateBitmapIfNeeded(bitmap, imageProxy.imageInfo.rotationDegrees)
+            // ✅ تبدیل ImageProxy به Bitmap با روش ساده
+            val bitmap = imageProxyToBitmapSimple(imageProxy)
             
-            // تنظیم ابعاد تصویر در OverlayView
+            if (bitmap == null) {
+                Log.e(TAG, "❌ تبدیل به Bitmap ناموفق بود - فریم #$frameCount")
+                imageProxy.close()
+                isProcessing.set(false)
+                return
+            }
+            
+            Log.d(TAG, "✅ Bitmap ساخته شد: ${bitmap.width}x${bitmap.height}")
+            
+            // ✅ تنظیم ابعاد در OverlayView
             runOnUiThread {
-                binding.overlayView.setImageDimensions(rotatedBitmap.width, rotatedBitmap.height)
+                binding.overlayView.setImageDimensions(bitmap.width, bitmap.height)
                 binding.overlayView.setCameraMode(true)
             }
             
-            // اجرای تشخیص
-            val results = detector?.detect(rotatedBitmap) ?: emptyList()
+            // ✅ اجرای تشخیص
+            val results = detector?.detect(bitmap) ?: emptyList()
             lastDetectionTime = currentTime
             
-            // آزادسازی bitmap اگر کپی شده
-            if (rotatedBitmap != bitmap) {
-                rotatedBitmap.recycle()
+            Log.d(TAG, "🎯 تشخیص انجام شد: ${results.size} نتیجه")
+            
+            // ✅ به‌روزرسانی تشخیص معتبر
+            if (results.isNotEmpty() && results[0].confidence >= 0.50f) {
+                lastValidDetection = results[0]
+                Log.d(TAG, "✅ تشخیص معتبر: ${results[0].className} (${results[0].confidence})")
             }
             
-            // به‌روزرسانی UI در Main Thread
+            // ✅ به‌روزرسانی UI
             runOnUiThread {
                 updateDetectionUI(results)
             }
             
-            // ذخیره نتایج برای ثبت بعدی
-            lastDetectionResults = results
-            
-            // به‌روزرسانی آخرین تشخیص معتبر
-            if (results.isNotEmpty() && results[0].confidence >= 0.50f) {
-                lastValidDetection = results[0]
-            }
+            // آزادسازی حافظه
+            bitmap.recycle()
             
         } catch (e: Exception) {
-            Log.e(TAG, "خطا در تحلیل تصویر: ${e.message}", e)
+            Log.e(TAG, "❌ خطا در تحلیل تصویر: ${e.message}", e)
+            e.printStackTrace()
         } finally {
             isProcessing.set(false)
             imageProxy.close()
@@ -235,22 +257,67 @@ class CameraActivity : AppCompatActivity() {
     }
     
     /**
-     * چرخش Bitmap بر اساس rotation
+     * ✅ تبدیل ساده ImageProxy به Bitmap
      */
-    private fun rotateBitmapIfNeeded(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
-        if (rotationDegrees == 0) return bitmap
-        
-        val matrix = Matrix()
-        matrix.postRotate(rotationDegrees.toFloat())
-        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    private fun imageProxyToBitmapSimple(imageProxy: ImageProxy): Bitmap? {
+        return try {
+            val yBuffer = imageProxy.planes[0].buffer
+            val uBuffer = imageProxy.planes[1].buffer
+            val vBuffer = imageProxy.planes[2].buffer
+            
+            val ySize = yBuffer.remaining()
+            val uSize = uBuffer.remaining()
+            val vSize = vBuffer.remaining()
+            
+            val nv21 = ByteArray(ySize + uSize + vSize)
+            
+            yBuffer.get(nv21, 0, ySize)
+            vBuffer.get(nv21, ySize, vSize)
+            uBuffer.get(nv21, ySize + vSize, uSize)
+            
+            val yuvImage = YuvImage(
+                nv21,
+                ImageFormat.NV21,
+                imageProxy.width,
+                imageProxy.height,
+                null
+            )
+            
+            val out = ByteArrayOutputStream()
+            yuvImage.compressToJpeg(
+                android.graphics.Rect(0, 0, imageProxy.width, imageProxy.height),
+                80,  // کیفیت پایین‌تر برای سرعت
+                out
+            )
+            
+            val imageBytes = out.toByteArray()
+            val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            
+            // چرخش بر اساس rotation
+            if (imageProxy.imageInfo.rotationDegrees != 0) {
+                val matrix = Matrix()
+                matrix.postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                val rotated = Bitmap.createBitmap(
+                    bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+                )
+                if (rotated != bitmap) {
+                    bitmap.recycle()
+                }
+                rotated
+            } else {
+                bitmap
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "خطا در imageProxyToBitmapSimple: ${e.message}", e)
+            null
+        }
     }
     
     /**
-     * ✅ به‌روزرسانی UI با نتایج تشخیص
+     * ✅ به‌روزرسانی UI
      */
     private fun updateDetectionUI(results: List<DetectionResult>) {
         if (results.isEmpty()) {
-            // هیچ تشخیصی نیست
             binding.overlayView.clearDetections()
             binding.cardDetectionInfo.isVisible = false
             binding.btnCapture.isEnabled = false
@@ -259,22 +326,17 @@ class CameraActivity : AppCompatActivity() {
         
         val topResult = results[0]
         
-        // رسم Bounding Box
+        // ✅ رسم Bounding Box
         binding.overlayView.setDetections(results)
         
         if (topResult.confidence >= 0.50f) {
-            // ✅ تشخیص معتبر - نمایش اطلاعات و فعال کردن دکمه OK
             binding.cardDetectionInfo.isVisible = true
             binding.tvDetectedClass.text = "✅ ${topResult.className}"
             binding.tvDetectedConfidence.text = "اطمینان: ${String.format("%.1f", topResult.confidence * 100)}٪"
             binding.tvDetectedConfidence.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_light))
             binding.btnCapture.isEnabled = true
-            
-            // تغییر رنگ دکمه OK به سبز
             binding.btnCapture.backgroundTintList = ContextCompat.getColorStateList(this, android.R.color.holo_green_light)
-            
         } else {
-            // تشخیص با اطمینان پایین
             binding.cardDetectionInfo.isVisible = true
             binding.tvDetectedClass.text = "⚠️ ${topResult.className}"
             binding.tvDetectedConfidence.text = "اطمینان: ${String.format("%.1f", topResult.confidence * 100)}٪ (کمتر از 50٪)"
@@ -285,7 +347,7 @@ class CameraActivity : AppCompatActivity() {
     }
     
     /**
-     * ✅ گرفتن عکس و ثبت داده‌ها
+     * ✅ گرفتن عکس و ثبت
      */
     private fun captureAndSave() {
         val detection = lastValidDetection
@@ -296,7 +358,6 @@ class CameraActivity : AppCompatActivity() {
         
         val imageCapture = imageCapture ?: return
         
-        // غیرفعال کردن دکمه‌ها حین پردازش
         binding.btnCapture.isEnabled = false
         binding.progressBar.isVisible = true
         
@@ -317,7 +378,6 @@ class CameraActivity : AppCompatActivity() {
                     if (bitmap != null) {
                         saveDetectionData(bitmap, detection, photoFile)
                     } else {
-                        Log.e(TAG, "خطا در بارگذاری bitmap")
                         binding.progressBar.isVisible = false
                         binding.btnCapture.isEnabled = true
                     }
@@ -325,7 +385,6 @@ class CameraActivity : AppCompatActivity() {
                 
                 override fun onError(exc: ImageCaptureException) {
                     Log.e(TAG, "خطا در عکس‌برداری", exc)
-                    Toast.makeText(this@CameraActivity, "خطا در عکس‌برداری", Toast.LENGTH_SHORT).show()
                     binding.progressBar.isVisible = false
                     binding.btnCapture.isEnabled = true
                 }
@@ -333,9 +392,6 @@ class CameraActivity : AppCompatActivity() {
         )
     }
     
-    /**
-     * ✅ ثبت داده‌ها و انتقال به ResultActivity
-     */
     private fun saveDetectionData(bitmap: Bitmap, detection: DetectionResult, photoFile: File) {
         cameraExecutor.execute {
             try {
@@ -361,15 +417,8 @@ class CameraActivity : AppCompatActivity() {
                             "✅ ثبت شد: ${detection.className}\nکلید: ${recordResult.primaryKey}",
                             Toast.LENGTH_LONG
                         ).show()
-                    } else {
-                        Toast.makeText(
-                            this,
-                            "❌ خطا: ${recordResult.message}",
-                            Toast.LENGTH_LONG
-                        ).show()
                     }
                     
-                    // انتقال به ResultActivity برای نمایش نتایج کامل
                     val intent = Intent(this, ResultActivity::class.java).apply {
                         putExtra("image_uri", Uri.fromFile(photoFile).toString())
                         putExtra("class_name", detection.className)
@@ -384,11 +433,10 @@ class CameraActivity : AppCompatActivity() {
                     finish()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "خطا در ثبت داده‌ها: ${e.message}", e)
+                Log.e(TAG, "خطا در ثبت: ${e.message}", e)
                 runOnUiThread {
                     binding.progressBar.isVisible = false
                     binding.btnCapture.isEnabled = true
-                    Toast.makeText(this, "خطا: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -404,7 +452,6 @@ class CameraActivity : AppCompatActivity() {
             if (allPermissionsGranted()) {
                 startCamera()
             } else {
-                Toast.makeText(this, "دسترسی‌ها اعطا نشدند", Toast.LENGTH_SHORT).show()
                 finish()
             }
         }
