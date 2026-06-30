@@ -25,6 +25,7 @@ import com.example.insectdetector.detector.DetectionResult
 import com.example.insectdetector.detector.YOLODetector
 import com.example.insectdetector.utils.DataRecorder
 import com.example.insectdetector.utils.LocationHelper
+import com.example.insectdetector.utils.ServerUploader
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
@@ -47,9 +48,12 @@ class CameraActivity : AppCompatActivity() {
     private var currentLocation: Location? = null
     private var currentPhotoFile: File? = null
     
+    // ✅ جدید: آپلود به سرور
+    private lateinit var serverUploader: ServerUploader
+    
     // ✅ متغیرهای تشخیص بلادرنگ
     private val isProcessing = AtomicBoolean(false)
-    private var frameCount = 0  // ✅ شمارنده فریم برای دیباگ
+    private var frameCount = 0
     private var lastDetectionTime: Long = 0
     private val DETECTION_INTERVAL_MS = 500L
     
@@ -72,6 +76,9 @@ class CameraActivity : AppCompatActivity() {
         locationHelper = LocationHelper(this)
         dataRecorder = DataRecorder(this)
         prefs = getSharedPreferences("app_prefs", MODE_PRIVATE)
+        
+        // ✅ مقداردهی ServerUploader
+        serverUploader = ServerUploader(this)
         
         try {
             detector = YOLODetector(this)
@@ -121,7 +128,7 @@ class CameraActivity : AppCompatActivity() {
                     binding.tvLocation.text = locationHelper.formatLocation(location)
                     Log.d(TAG, "📍 موقعیت: ${location.latitude}, ${location.longitude}")
                 } else {
-                    binding.tvLocation.text = " موقعیت مکانی: نامشخص"
+                    binding.tvLocation.text = "📍 موقعیت مکانی: نامشخص"
                 }
             }
         }
@@ -136,19 +143,16 @@ class CameraActivity : AppCompatActivity() {
             try {
                 val cameraProvider = cameraProviderFuture.get()
                 
-                // ✅ Preview
                 val preview = Preview.Builder()
                     .build()
                     .also {
                         it.setSurfaceProvider(binding.previewView.surfaceProvider)
                     }
                 
-                // ✅ ImageCapture
                 imageCapture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                     .build()
                 
-                // ✅ ImageAnalysis - تنظیمات ساده و سازگار
                 val imageAnalysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
@@ -173,31 +177,25 @@ class CameraActivity : AppCompatActivity() {
                 Log.d(TAG, "✅ دوربین با موفقیت راه‌اندازی شد - ImageAnalysis فعال است")
                 
             } catch (exc: Exception) {
-                Log.e(TAG, " خطا در راه‌اندازی دوربین: ${exc.message}", exc)
+                Log.e(TAG, "❌ خطا در راه‌اندازی دوربین: ${exc.message}", exc)
             }
         }, ContextCompat.getMainExecutor(this))
     }
     
-    /**
-     * ✅ تحلیل بلادرنگ - با لاگ‌های کامل
-     */
     private fun analyzeImage(imageProxy: ImageProxy) {
         frameCount++
         
-        // لاگ هر 10 فریم
         if (frameCount % 10 == 0) {
             Log.d(TAG, "📸 فریم #$frameCount دریافت شد - اندازه: ${imageProxy.width}x${imageProxy.height}")
         }
         
         val currentTime = System.currentTimeMillis()
         
-        // Throttle
         if (currentTime - lastDetectionTime < DETECTION_INTERVAL_MS) {
             imageProxy.close()
             return
         }
         
-        // جلوگیری از پردازش همزمان
         if (!isProcessing.compareAndSet(false, true)) {
             if (frameCount % 50 == 0) {
                 Log.d(TAG, "⏳ پردازش قبلی هنوز در حال انجام است - فریم رد شد")
@@ -209,7 +207,6 @@ class CameraActivity : AppCompatActivity() {
         try {
             Log.d(TAG, "🔄 شروع پردازش فریم #$frameCount...")
             
-            // ✅ تبدیل ImageProxy به Bitmap با روش ساده
             val bitmap = imageProxyToBitmapSimple(imageProxy)
             
             if (bitmap == null) {
@@ -221,30 +218,25 @@ class CameraActivity : AppCompatActivity() {
             
             Log.d(TAG, "✅ Bitmap ساخته شد: ${bitmap.width}x${bitmap.height}")
             
-            // ✅ تنظیم ابعاد در OverlayView
             runOnUiThread {
                 binding.overlayView.setImageDimensions(bitmap.width, bitmap.height)
                 binding.overlayView.setCameraMode(true)
             }
             
-            // ✅ اجرای تشخیص
             val results = detector?.detect(bitmap) ?: emptyList()
             lastDetectionTime = currentTime
             
             Log.d(TAG, "🎯 تشخیص انجام شد: ${results.size} نتیجه")
             
-            // ✅ به‌روزرسانی تشخیص معتبر
             if (results.isNotEmpty() && results[0].confidence >= 0.50f) {
                 lastValidDetection = results[0]
                 Log.d(TAG, "✅ تشخیص معتبر: ${results[0].className} (${results[0].confidence})")
             }
             
-            // ✅ به‌روزرسانی UI
             runOnUiThread {
                 updateDetectionUI(results)
             }
             
-            // آزادسازی حافظه
             bitmap.recycle()
             
         } catch (e: Exception) {
@@ -256,9 +248,6 @@ class CameraActivity : AppCompatActivity() {
         }
     }
     
-    /**
-     * ✅ تبدیل ساده ImageProxy به Bitmap
-     */
     private fun imageProxyToBitmapSimple(imageProxy: ImageProxy): Bitmap? {
         return try {
             val yBuffer = imageProxy.planes[0].buffer
@@ -286,14 +275,13 @@ class CameraActivity : AppCompatActivity() {
             val out = ByteArrayOutputStream()
             yuvImage.compressToJpeg(
                 android.graphics.Rect(0, 0, imageProxy.width, imageProxy.height),
-                80,  // کیفیت پایین‌تر برای سرعت
+                80,
                 out
             )
             
             val imageBytes = out.toByteArray()
             val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
             
-            // چرخش بر اساس rotation
             if (imageProxy.imageInfo.rotationDegrees != 0) {
                 val matrix = Matrix()
                 matrix.postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
@@ -313,9 +301,6 @@ class CameraActivity : AppCompatActivity() {
         }
     }
     
-    /**
-     * ✅ به‌روزرسانی UI
-     */
     private fun updateDetectionUI(results: List<DetectionResult>) {
         if (results.isEmpty()) {
             binding.overlayView.clearDetections()
@@ -326,7 +311,6 @@ class CameraActivity : AppCompatActivity() {
         
         val topResult = results[0]
         
-        // ✅ رسم Bounding Box
         binding.overlayView.setDetections(results)
         
         if (topResult.confidence >= 0.50f) {
@@ -346,9 +330,6 @@ class CameraActivity : AppCompatActivity() {
         }
     }
     
-    /**
-     * ✅ گرفتن عکس و ثبت
-     */
     private fun captureAndSave() {
         val detection = lastValidDetection
         if (detection == null) {
@@ -399,6 +380,7 @@ class CameraActivity : AppCompatActivity() {
                 val latitude = currentLocation?.latitude ?: 0.0
                 val longitude = currentLocation?.longitude ?: 0.0
                 
+                // ✅ ثبت محلی
                 val recordResult = dataRecorder.recordDetection(
                     bitmap = bitmap,
                     className = detection.className,
@@ -419,6 +401,10 @@ class CameraActivity : AppCompatActivity() {
                         ).show()
                     }
                     
+                    // ✅ آپلود به سرور (جدید)
+                    uploadToServer(photoFile, detection, latitude, longitude, userName, recordResult.primaryKey)
+                    
+                    // انتقال به ResultActivity
                     val intent = Intent(this, ResultActivity::class.java).apply {
                         putExtra("image_uri", Uri.fromFile(photoFile).toString())
                         putExtra("class_name", detection.className)
@@ -442,6 +428,158 @@ class CameraActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * ✅ تابع جدید: آپلود به سرور
+     */
+    private fun uploadToServer(
+        photoFile: File,
+        detection: DetectionResult,
+        latitude: Double,
+        longitude: Double,
+        userName: String,
+        primaryKey: String
+    ) {
+        if (!isNetworkAvailable()) {
+            Log.w(TAG, "⚠️ اینترنت نیست - ذخیره برای آپلود بعدی")
+            savePendingUpload(photoFile, detection, latitude, longitude, userName, primaryKey)
+            return
+        }
+        
+        Log.d(TAG, "📤 در حال آپلود به سرور...")
+        
+        serverUploader.uploadDetection(
+            imageFile = photoFile,
+            primaryKey = primaryKey,
+            className = detection.className,
+            confidence = detection.confidence,
+            latitude = latitude,
+            longitude = longitude,
+            userName = userName
+        ) { result ->
+            runOnUiThread {
+                if (result.success) {
+                    Log.d(TAG, "✅ آپلود موفق به سرور")
+                    Toast.makeText(
+                        this,
+                        "📤 داده به سرور ارسال شد",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    
+                    clearPendingUpload(primaryKey)
+                } else {
+                    Log.e(TAG, "❌ آپلود ناموفق: ${result.message}")
+                    Toast.makeText(
+                        this,
+                        "⚠️ خطا در آپلود: ${result.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    
+                    savePendingUpload(photoFile, detection, latitude, longitude, userName, primaryKey)
+                }
+            }
+        }
+    }
+    
+    /**
+     * ✅ بررسی اتصال اینترنت
+     */
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) 
+            as? android.net.ConnectivityManager
+        val network = connectivityManager?.activeNetwork
+        val capabilities = connectivityManager?.getNetworkCapabilities(network)
+        return capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
+    
+    /**
+     * ✅ ذخیره برای آپلود بعدی (وقتی اینترنت نیست)
+     */
+    private fun savePendingUpload(
+        photoFile: File,
+        detection: DetectionResult,
+        latitude: Double,
+        longitude: Double,
+        userName: String,
+        primaryKey: String
+    ) {
+        val pendingPrefs = getSharedPreferences("pending_uploads", MODE_PRIVATE)
+        val editor = pendingPrefs.edit()
+        
+        editor.putString("pending_${primaryKey}_path", photoFile.absolutePath)
+        editor.putString("pending_${primaryKey}_class", detection.className)
+        editor.putFloat("pending_${primaryKey}_confidence", detection.confidence)
+        editor.putFloat("pending_${primaryKey}_latitude", latitude.toFloat())
+        editor.putFloat("pending_${primaryKey}_longitude", longitude.toFloat())
+        editor.putString("pending_${primaryKey}_user", userName)
+        editor.putBoolean("pending_${primaryKey}_ready", true)
+        editor.apply()
+        
+        Log.d(TAG, "💾 ذخیره شد برای آپلود بعدی: $primaryKey")
+    }
+    
+    /**
+     * ✅ پاک کردن از pending
+     */
+    private fun clearPendingUpload(primaryKey: String) {
+        val pendingPrefs = getSharedPreferences("pending_uploads", MODE_PRIVATE)
+        val editor = pendingPrefs.edit()
+        editor.remove("pending_${primaryKey}_path")
+        editor.remove("pending_${primaryKey}_class")
+        editor.remove("pending_${primaryKey}_confidence")
+        editor.remove("pending_${primaryKey}_latitude")
+        editor.remove("pending_${primaryKey}_longitude")
+        editor.remove("pending_${primaryKey}_user")
+        editor.remove("pending_${primaryKey}_ready")
+        editor.apply()
+    }
+    
+    /**
+     * ✅ آپلود موارد pending (وقتی اینترنت برگشت)
+     */
+    private fun uploadPendingItems() {
+        val pendingPrefs = getSharedPreferences("pending_uploads", MODE_PRIVATE)
+        val allKeys = pendingPrefs.all.keys.filter { it.endsWith("_ready") }
+        
+        if (allKeys.isEmpty()) {
+            Log.d(TAG, "📭 هیچ مورد pending نیست")
+            return
+        }
+        
+        Log.d(TAG, "📤 آپلود ${allKeys.size} مورد pending...")
+        
+        for (key in allKeys) {
+            val primaryKey = key.removePrefix("pending_").removeSuffix("_ready")
+            
+            val path = pendingPrefs.getString("pending_${primaryKey}_path", null) ?: continue
+            val className = pendingPrefs.getString("pending_${primaryKey}_class", "") ?: ""
+            val confidence = pendingPrefs.getFloat("pending_${primaryKey}_confidence", 0f)
+            val latitude = pendingPrefs.getFloat("pending_${primaryKey}_latitude", 0f).toDouble()
+            val longitude = pendingPrefs.getFloat("pending_${primaryKey}_longitude", 0f).toDouble()
+            val userName = pendingPrefs.getString("pending_${primaryKey}_user", "") ?: ""
+            
+            val file = File(path)
+            if (!file.exists()) {
+                clearPendingUpload(primaryKey)
+                continue
+            }
+            
+            serverUploader.uploadDetection(
+                imageFile = file,
+                primaryKey = primaryKey,
+                className = className,
+                confidence = confidence,
+                latitude = latitude,
+                longitude = longitude,
+                userName = userName
+            ) { result ->
+                if (result.success) {
+                    clearPendingUpload(primaryKey)
+                    Log.d(TAG, "✅ آپلود pending موفق: $primaryKey")
+                }
+            }
+        }
+    }
+    
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
@@ -454,6 +592,16 @@ class CameraActivity : AppCompatActivity() {
             } else {
                 finish()
             }
+        }
+    }
+    
+    /**
+     * ✅ بررسی و آپلود موارد pending وقتی اپ به foreground می‌آید
+     */
+    override fun onResume() {
+        super.onResume()
+        if (isNetworkAvailable()) {
+            uploadPendingItems()
         }
     }
     
