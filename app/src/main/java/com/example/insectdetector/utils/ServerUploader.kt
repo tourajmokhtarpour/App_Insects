@@ -15,7 +15,7 @@ class ServerUploader(private val context: Context) {
         private const val TAG = "ServerUploader"
         
         // ✅ آدرس سرور Hugging Face
-        const val SERVER_URL = "https://tourajmokhtarpour-insect-detector-server.hf.space"
+        const val SERVER_URL = "https://touraj732-insect-detector-server.hf.space"
     }
     
     private val client: OkHttpClient = OkHttpClient.Builder()
