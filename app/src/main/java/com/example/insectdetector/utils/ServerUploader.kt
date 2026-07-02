@@ -15,14 +15,14 @@ class ServerUploader(private val context: Context) {
         private const val TAG = "ServerUploader"
         
         // ✅ آدرس سرور Hugging Face خود را اینجا وارد کنید
-        // مثال: https://your-username-insect-detector-server.hf.space
-        const val SERVER_URL = "https://touraj732-insect-detector-server.hf.space"
+        // ⚠️ مهم: نام کاربری و نام Space را دقیق وارد کنید
+        const val SERVER_URL = "https://tourajmokhtarpour-insect-detector-server.hf.space"
     }
     
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)  // افزایش timeout
+        .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)    // افزایش timeout
+        .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)   // افزایش timeout
         .build()
     
     /**
@@ -38,13 +38,11 @@ class ServerUploader(private val context: Context) {
         userName: String,
         callback: (UploadResult) -> Unit
     ) {
-        // بررسی وجود فایل
         if (!imageFile.exists()) {
             callback(UploadResult(false, "فایل تصویر وجود ندارد"))
             return
         }
         
-        // بررسی اتصال اینترنت
         if (!isNetworkAvailable()) {
             callback(UploadResult(false, "اتصال اینترنت برقرار نیست"))
             return
@@ -52,8 +50,8 @@ class ServerUploader(private val context: Context) {
         
         Log.d(TAG, "📤 شروع آپلود: $primaryKey")
         Log.d(TAG, "📍 آدرس سرور: $SERVER_URL")
+        Log.d(TAG, "📏 حجم فایل: ${imageFile.length() / 1024} KB")
         
-        // ساخت درخواست Multipart
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", imageFile.name,
@@ -71,7 +69,6 @@ class ServerUploader(private val context: Context) {
             .post(requestBody)
             .build()
         
-        // اجرای درخواست در background
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.e(TAG, "❌ خطا در آپلود: ${e.message}", e)
@@ -81,7 +78,7 @@ class ServerUploader(private val context: Context) {
             override fun onResponse(call: Call, response: Response) {
                 val responseBody = response.body?.string() ?: ""
                 Log.d(TAG, "📥 پاسخ سرور: ${response.code}")
-                Log.d(TAG, " بدنه پاسخ: $responseBody")
+                Log.d(TAG, "📝 بدنه پاسخ: $responseBody")
                 
                 if (response.isSuccessful) {
                     try {
@@ -95,18 +92,17 @@ class ServerUploader(private val context: Context) {
                             imageUrl = imageUrl
                         ))
                     } catch (e: Exception) {
+                        Log.e(TAG, "خطا در parse پاسخ: ${e.message}")
                         callback(UploadResult(true, "آپلود موفق (پاسخ نامعتبر)"))
                     }
                 } else {
+                    Log.e(TAG, "❌ خطای سرور: ${response.code}")
                     callback(UploadResult(false, "خطای سرور: ${response.code} - $responseBody"))
                 }
             }
         })
     }
     
-    /**
-     * بررسی اتصال اینترنت
-     */
     private fun isNetworkAvailable(): Boolean {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) 
             as? android.net.ConnectivityManager
@@ -115,9 +111,6 @@ class ServerUploader(private val context: Context) {
         return capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     }
     
-    /**
-     * نتیجه آپلود
-     */
     data class UploadResult(
         val success: Boolean,
         val message: String,
